@@ -166,6 +166,7 @@ async function callGemini(contents, opts){
       responseMimeType: "application/json",
     },
   };
+  if (opts.schema) body.generationConfig.responseSchema = opts.schema;
   const res = await fetch(url, {
     method:"POST", headers:{ "Content-Type":"application/json" },
     body: JSON.stringify(body),
@@ -186,14 +187,82 @@ async function callGemini(contents, opts){
   return cand.content.parts.map(p => p.text || "").join("");
 }
 
+// ── 出力スキーマ（Geminiに形式を強制） ──
+const SCHEMA_CHAT = { type:"OBJECT", properties:{
+  reply:{ type:"STRING" },
+  feedback:{ type:"OBJECT", properties:{
+    hasIssues:{ type:"BOOLEAN" }, corrected:{ type:"STRING" }, explanation:{ type:"STRING" },
+  }, required:["hasIssues"] },
+}, required:["reply","feedback"] };
+const SCHEMA_DIGEST = { type:"OBJECT", properties:{
+  title:{ type:"STRING" }, field:{ type:"STRING" }, docType:{ type:"STRING" }, summary:{ type:"STRING" },
+  keyTerms:{ type:"ARRAY", items:{ type:"STRING" } },
+  sampleQuestions:{ type:"ARRAY", items:{ type:"STRING" } },
+}, required:["title","field","docType","summary"] };
+const SCHEMA_HINTS = { type:"OBJECT", properties:{
+  hints:{ type:"ARRAY", items:{ type:"OBJECT", properties:{
+    english:{ type:"STRING" }, japanese:{ type:"STRING" } }, required:["english","japanese"] } },
+}, required:["hints"] };
+const SCHEMA_SUMMARY = { type:"OBJECT", properties:{
+  overall:{ type:"STRING" },
+  strengths:{ type:"ARRAY", items:{ type:"STRING" } },
+  improvements:{ type:"ARRAY", items:{ type:"STRING" } },
+  phrases:{ type:"ARRAY", items:{ type:"OBJECT", properties:{
+    english:{ type:"STRING" }, japanese:{ type:"STRING" } }, required:["english","japanese"] } },
+}, required:["overall"] };
+const SCHEMA_TRANSCRIPT = { type:"OBJECT", properties:{ transcript:{ type:"STRING" } }, required:["transcript"] };
+
+function extractBalancedJSON(text){
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0, inStr = false, escaped = false;
+  for (let i = start; i < text.length; i++){
+    const ch = text[i];
+    if (inStr){
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inStr = false;
+    } else {
+      if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}"){ depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+  }
+  return null;
+}
+
 function parseModelJSON(text){
   const cleaned = String(text).replace(/```(?:json)?/gi, "").trim();
-  const s = cleaned.indexOf("{");
-  const e = cleaned.lastIndexOf("}");
-  if (s === -1 || e <= s) throw new Error("no json");
-  const raw = cleaned.slice(s, e + 1);
-  try{ return JSON.parse(raw); }
-  catch(err){ return JSON.parse(raw.replace(/[\r\n\t]+/g, " ")); }
+  const candidates = [];
+  const bal = extractBalancedJSON(cleaned);
+  if (bal) candidates.push(bal);
+  const s = cleaned.indexOf("{"), e = cleaned.lastIndexOf("}");
+  if (s !== -1 && e > s && cleaned.slice(s, e + 1) !== bal) candidates.push(cleaned.slice(s, e + 1));
+  for (const c of candidates){
+    try{ return JSON.parse(c); }catch(err){}
+    try{ return JSON.parse(c.replace(/[\r\n\t]+/g, " ")); }catch(err){}
+  }
+  throw new Error("no json");
+}
+
+// 解析が完全に失敗しても、返答と添削をフィールド単位で救出する（生JSONは表示しない）
+function looseChatParse(text){
+  const t = String(text);
+  const grab = (key) => {
+    const m = t.match(new RegExp('"' + key + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"'));
+    if (!m) return "";
+    try{ return JSON.parse('"' + m[1] + '"'); }catch(e){ return m[1]; }
+  };
+  const reply = grab("reply");
+  if (reply){
+    return { reply: reply, feedback: {
+      hasIssues: /"hasIssues"\s*:\s*true/.test(t),
+      corrected: grab("corrected"),
+      explanation: grab("explanation"),
+    }};
+  }
+  return { reply: t.replace(/```(?:json)?/gi, "").replace(/[{}"]/g, " ").replace(/\s+/g, " ").trim(),
+           feedback: { hasIssues:false, corrected:"", explanation:"" } };
 }
 
 function readFileB64(file){
@@ -363,7 +432,7 @@ async function onRecStopped(){
         { inline_data:{ mime_type: blob.type.split(";")[0] || "audio/webm", data: b64 } },
         { text: prompt },
       ]},
-    ], { temperature: 0.2 });
+    ], { temperature: 0.2, schema: SCHEMA_TRANSCRIPT });
     const parsed = parseModelJSON(out);
     const t = String(parsed.transcript || "").trim();
     const ta = $("chatInput");
@@ -407,7 +476,7 @@ async function analyzePdf(){
         { inline_data:{ mime_type:"application/pdf", data:S.pdfB64 } },
         { text: prompt },
       ]},
-    ], { temperature:0.3 });
+    ], { temperature:0.3, schema: SCHEMA_DIGEST });
     const parsed = parseModelJSON(out);
     if (!parsed.summary || !parsed.title) throw new Error("bad digest");
     S.digest = parsed;
@@ -440,10 +509,10 @@ async function runTurn(history){
   S.sending = true; S.chatError = null;
   renderMsgs();
   try{
-    const out = await callGemini(historyToContents(history), { temperature:0.9 });
+    const out = await callGemini(historyToContents(history), { temperature:0.9, schema: SCHEMA_CHAT });
     let parsed;
     try{ parsed = parseModelJSON(out); }
-    catch(e){ parsed = { reply: String(out).replace(/```/g,"").trim(), feedback:{ hasIssues:false, corrected:"", explanation:"" } }; }
+    catch(e){ parsed = looseChatParse(out); }
     S.msgs = history.concat([{ role:"ai", text: parsed.reply || "…", feedback: parsed.feedback || null }]);
     if (S.autoSpeak) speak(parsed.reply || "");
   }catch(e){
@@ -483,7 +552,7 @@ async function getHints(){
       + 'The conversation partner just said: "' + lastAI.text + '"\n'
       + "Give 2 distinct example responses the researcher could say next, at an intermediate English level, each 1-2 sentences.\n"
       + 'Respond ONLY with valid JSON: {"hints":[{"english":"...","japanese":"自然な日本語訳"},{"english":"...","japanese":"..."}]}';
-    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.7 });
+    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.7, schema: SCHEMA_HINTS });
     const parsed = parseModelJSON(out);
     S.hints = parsed.hints || [];
   }catch(e){ S.hints = []; }
@@ -498,7 +567,7 @@ async function genSummary(){
     const prompt = "以下は日本人研究者の英会話練習の記録です（Partner=会話相手、Learner=練習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
       + transcript + "\n---\n"
       + 'Respond ONLY with valid JSON: {"overall":"総評（日本語2〜3文、励ましを含む）","strengths":["良かった点（日本語）を2〜3個"],"improvements":["具体的な改善ポイント（日本語）を2〜3個"],"phrases":[{"english":"この場面で使える便利な英語表現","japanese":"日本語訳"},{"english":"...","japanese":"..."},{"english":"...","japanese":"..."}]}';
-    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5 });
+    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
     S.summary = parseModelJSON(out);
   }catch(e){ S.summaryError = true; }
   finally{ S.summaryLoading = false; render(); }
