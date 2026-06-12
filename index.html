@@ -281,6 +281,105 @@ function toggleListening(){
 }
 function showMicNote(t){ S.micNote = t; const n = $("micNote"); if (n){ n.textContent = t; n.style.display = t ? "block" : "none"; } }
 
+// ── 録音→Gemini文字起こし方式の音声入力 ──
+let mediaRec = null, mediaStream = null, recChunks = [];
+let recTimer = null, recStart = 0, recording = false, transcribing = false, discardRec = false;
+
+function updateRecUI(){
+  const mic = $("micBtn"), st = $("micStatus");
+  if (!mic) return;
+  if (recording){
+    const sec = Math.floor((Date.now() - recStart) / 1000);
+    mic.classList.add("listening");
+    mic.style.background = "var(--stripe)"; mic.style.color = "#fff"; mic.textContent = "■";
+    if (st){ st.style.display = "inline"; st.textContent = "● 録音中 " + Math.floor(sec/60) + ":" + String(sec%60).padStart(2,"0") + " ─ タップで停止"; }
+  } else if (transcribing){
+    mic.classList.remove("listening");
+    mic.style.background = "#E7EAF0"; mic.style.color = "var(--navy)"; mic.textContent = "…";
+    if (st){ st.style.display = "inline"; st.textContent = "文字起こし中…"; }
+  } else {
+    mic.classList.remove("listening");
+    mic.style.background = "#E7EAF0"; mic.style.color = "var(--navy)"; mic.textContent = "🎙";
+    if (st) st.style.display = "none";
+  }
+}
+
+async function toggleRecording(){
+  if (transcribing) return;
+  if (recording){ stopRecording(); return; }
+  if (!(navigator.mediaDevices && window.MediaRecorder)){ toggleListening(); return; } // 旧方式にフォールバック
+  try{
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }catch(e){
+    showMicNote("マイクを使用できませんでした。ブラウザのマイク許可設定を確認してください。");
+    return;
+  }
+  recChunks = []; discardRec = false;
+  let mime = "";
+  for (const c of ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]){
+    if (MediaRecorder.isTypeSupported(c)){ mime = c; break; }
+  }
+  try{
+    mediaRec = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream);
+  }catch(e){
+    mediaRec = new MediaRecorder(mediaStream);
+  }
+  mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRec.onstop = onRecStopped;
+  mediaRec.start();
+  recording = true; recStart = Date.now();
+  showMicNote("");
+  updateRecUI();
+  recTimer = setInterval(() => {
+    updateRecUI();
+    if (Date.now() - recStart > 120000) stopRecording(); // 2分で自動停止
+  }, 500);
+}
+
+function stopRecording(){
+  if (recTimer){ clearInterval(recTimer); recTimer = null; }
+  recording = false;
+  try{ if (mediaRec && mediaRec.state !== "inactive") mediaRec.stop(); }catch(e){}
+  updateRecUI();
+}
+
+async function onRecStopped(){
+  try{ if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); }catch(e){}
+  if (discardRec || S.stage !== "chat"){ discardRec = false; return; }
+  const blob = new Blob(recChunks, { type: (mediaRec && mediaRec.mimeType) || "audio/webm" });
+  if (blob.size < 1500){
+    updateRecUI();
+    showMicNote("録音が短すぎました。もう一度お試しください。");
+    return;
+  }
+  transcribing = true; updateRecUI();
+  try{
+    const b64 = await readFileB64(blob);
+    const prompt = "This audio is a Japanese researcher practicing spoken English. A Japanese accent, a slow pace, long pauses, and fillers are all expected and normal.\n"
+      + "Transcribe their English speech faithfully. Remove filler sounds (um, ah, e-to) but do NOT correct grammar mistakes - keep exactly what they said. If a word is unclear, write your best guess from the context of someone describing academic research.\n"
+      + 'Respond ONLY with valid JSON: {"transcript":"what they said in English"}';
+    const out = await callGemini([
+      { role:"user", parts:[
+        { inline_data:{ mime_type: blob.type.split(";")[0] || "audio/webm", data: b64 } },
+        { text: prompt },
+      ]},
+    ], { temperature: 0.2 });
+    const parsed = parseModelJSON(out);
+    const t = String(parsed.transcript || "").trim();
+    const ta = $("chatInput");
+    if (t && ta){
+      ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + t;
+      ta.focus();
+    } else if (!t){
+      showMicNote("音声を聞き取れませんでした。マイクに近づいて、もう一度お試しください。");
+    }
+  }catch(e){
+    showMicNote("文字起こしに失敗しました" + (e && e.message ? "（" + e.message + "）" : "") + "。もう一度お試しください。");
+  }finally{
+    transcribing = false; updateRecUI();
+  }
+}
+
 // ── upload & analyze ──
 async function handleFile(file){
   if (!file) return;
@@ -365,7 +464,7 @@ function startChat(){
 function sendMessage(){
   const ta = $("chatInput"); if (!ta) return;
   const text = ta.value.trim();
-  if (!text || S.sending) return;
+  if (!text || S.sending || recording || transcribing) return;
   if (listening) toggleListening();
   ta.value = ""; S.hints = null;
   runTurn(S.msgs.concat([{ role:"user", text }]));
@@ -407,6 +506,7 @@ async function genSummary(){
 
 function endSession(){
   try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  if (recording){ discardRec = true; stopRecording(); }
   const userTurns = S.msgs.filter(m => m.role === "user").length;
   if (userTurns === 0){ S.msgs = []; setStage("setup"); return; }
   setStage("summary");
@@ -574,7 +674,7 @@ function renderSetup(){
 // ── chat ──
 function renderChat(){
   const sc = SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
-  const srOk = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const micOk = !!((navigator.mediaDevices && window.MediaRecorder) || window.SpeechRecognition || window.webkitSpeechRecognition);
   app.innerHTML = '<div class="chat-root">'
     + '<div class="chat-head"><div style="max-width:600px;margin:0 auto">'
     +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
@@ -590,11 +690,11 @@ function renderChat(){
     + '<div class="chat-foot"><div style="max-width:600px;margin:0 auto">'
     +   '<div style="display:flex;justify-content:space-between;align-items:center">'
     +     '<button id="hintBtn" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--navy);padding:4px 0">💡 <span id="hintBtnLabel">答え方のヒント</span></button>'
-    +     '<span id="micStatus" style="display:none;font-size:11px;font-weight:700;color:var(--stripe)">● 聞き取り中… 英語で話してください</span></div>'
+    +     '<span id="micStatus" style="display:none;font-size:11px;font-weight:700;color:var(--stripe)"></span></div>'
     +   '<div id="micNote" style="display:' + (S.micNote ? "block" : "none") + ';font-size:11px;color:var(--sub);margin-top:4px">' + esc(S.micNote) + '</div>'
     +   '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px">'
     +     '<textarea id="chatInput" rows="2" placeholder="英語で返答してみましょう…" style="flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;outline:none;color:var(--ink)"></textarea>'
-    +     (srOk ? '<button id="micBtn" class="iconbtn" style="background:#E7EAF0;color:var(--navy)">🎙</button>' : '')
+    +     (micOk ? '<button id="micBtn" class="iconbtn" style="background:#E7EAF0;color:var(--navy)">🎙</button>' : '')
     +     '<button id="sendBtn" class="iconbtn" style="background:var(--navy);color:#fff">➤</button></div>'
     + '</div></div></div>';
 
@@ -604,7 +704,7 @@ function renderChat(){
   $("hintBtn").addEventListener("click", getHints);
   $("sendBtn").addEventListener("click", sendMessage);
   const mic = $("micBtn");
-  if (mic) mic.addEventListener("click", toggleListening);
+  if (mic) mic.addEventListener("click", toggleRecording);
   $("chatInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
   });
