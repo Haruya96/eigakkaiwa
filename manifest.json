@@ -1,0 +1,15 @@
+{
+  "name": "研究英会話トレーナー",
+  "short_name": "研究英会話",
+  "description": "論文・ポスターPDFをテーマに英会話を練習するアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F3F0",
+  "theme_color": "#22314E",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

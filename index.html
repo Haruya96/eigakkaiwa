@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<title>研究英会話トレーナー</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#22314E">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+:root{
+  --navy:#22314E; --navy-deep:#182338; --bg:#F2F3F0; --paper:#FFFFFF;
+  --line:#DCDFE3; --ink:#222733; --sub:#646B78; --stripe:#B94A2F;
+  --amber-bg:#FAF1DC; --amber-line:#E3C883; --amber-ink:#6E5414;
+  --green:#2E7D4F; --green-bg:#E9F3EC; --red-bg:#FBEDEA; --red-line:#E5B3A6; --red-ink:#8C3A26;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN',sans-serif;
+  background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+button:disabled{opacity:.4;cursor:default}
+textarea,input{font-family:inherit}
+.display{font-family:'Archivo','Zen Kaku Gothic New',sans-serif}
+.mono{font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
+.wrap{max-width:600px;margin:0 auto;padding:0 20px}
+.eyebrow{font-size:10px;font-weight:500;color:var(--sub)}
+.eyebrow.red{color:var(--stripe)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:12px;font-weight:700;font-size:14px}
+.btn-navy{background:var(--navy);color:#fff}
+.btn-stripe{background:var(--stripe);color:#fff}
+.btn-ghost{background:var(--paper);border:1px solid var(--line);color:var(--sub)}
+.errbox{background:var(--red-bg);border:1px solid var(--red-line);color:var(--red-ink);border-radius:12px;padding:12px 16px;font-size:13px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg{animation:fadeUp .3s ease both}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--sub);display:inline-block;animation:blink 1.2s infinite}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(185,74,47,.45)}70%{box-shadow:0 0 0 12px rgba(185,74,47,0)}100%{box-shadow:0 0 0 0 rgba(185,74,47,0)}}
+.listening{animation:pulse 1.4s infinite}
+@media (prefers-reduced-motion:reduce){.msg,.dot,.listening{animation:none!important}}
+#msgScroll::-webkit-scrollbar{width:6px}
+#msgScroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+
+/* chat layout */
+.chat-root{display:flex;flex-direction:column;height:100dvh}
+.chat-head{flex-shrink:0;background:var(--navy);border-bottom:1px solid var(--navy-deep);padding:12px 16px}
+.chat-body{flex:1;overflow-y:auto}
+.chat-foot{flex-shrink:0;background:var(--paper);border-top:1px solid var(--line);padding:10px 16px 16px}
+.avatar{flex-shrink:0;width:32px;height:32px;border-radius:8px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;font-family:'Archivo',sans-serif}
+.bub-ai{background:var(--paper);border:1px solid var(--line);border-radius:16px 16px 16px 6px;padding:11px 16px;font-size:14px;line-height:1.65}
+.bub-user{background:var(--navy);color:#fff;border-radius:16px 16px 6px 16px;padding:11px 16px;font-size:14px;line-height:1.65;max-width:82%}
+.fbcard{max-width:82%;margin-top:8px;background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:12px;padding:10px 14px;text-align:left}
+.pill{font-size:12px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:var(--sub);background:transparent}
+.pill.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.iconbtn{flex-shrink:0;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.scene-btn{width:100%;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px 16px;margin-bottom:8px}
+.scene-btn.on{background:var(--navy);border-color:var(--navy)}
+.diff-btn{flex:1;border:1px solid var(--line);background:var(--paper);color:var(--sub);border-radius:12px;padding:9px 0;font-weight:700;font-size:14px}
+.diff-btn.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.hintbtn{width:100%;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:9px 12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+// ════════════════════════════════════════════════════════
+// 研究英会話トレーナー (Gemini API版)
+// APIキー: 同じフォルダの gemini_api_key.txt から自動読み込み
+//   (file:// で開いた場合は自動読み込み不可 → ファイル選択 / 貼り付け)
+// ════════════════════════════════════════════════════════
+
+const DEFAULT_MODEL = "gemini-2.5-flash";
+
+const SCENARIOS = [
+  { id:"qa", label:"口頭発表 Q&A", en:"ORAL Q&A",
+    desc:"発表直後の質疑応答。聴衆からの質問に英語で答える",
+    partner:"Dr. Reyes", initial:"R",
+    persona:"an audience member at an international conference, during the Q&A session right after the learner finished the oral presentation of this work. Open by briefly thanking them for the talk, then ask your first question." },
+  { id:"poster", label:"ポスター発表", en:"POSTER SESSION",
+    desc:"ポスターの前に来た研究者に説明し、議論する",
+    partner:"Alex", initial:"A",
+    persona:"a researcher who just walked up to the learner's poster at a poster session. Open casually, for example by asking them to walk you through the poster, then dig into details as the conversation flows." },
+  { id:"coffee", label:"懇親会・雑談", en:"COFFEE BREAK",
+    desc:"休憩時間のスモールトーク。雑談から研究の話へ",
+    partner:"Maria", initial:"M",
+    persona:"a friendly professor chatting with the learner during the conference coffee break. Start with light small talk (the conference, the venue, where they are from), then naturally ask what their research is about. Keep the register casual and warm." },
+];
+
+const DIFFS = [
+  { id:"gentle", label:"やさしめ", style:"Ask supportive, fundamental questions in simple, clear English. Be warm and encouraging. Avoid aggressive or jargon-heavy questions." },
+  { id:"normal", label:"標準", style:"Ask realistic academic questions like a genuinely curious fellow researcher, at a natural difficulty level." },
+  { id:"tough", label:"鋭め", style:"Be a sharp but professional questioner: probe limitations, alternative explanations, validity, and novelty, and politely push back when answers are vague. Still one question at a time." },
+];
+
+const ANALYZE_MSGS = ["PDFを読み込んでいます…","研究内容を分析しています…","想定質問を考えています…"];
+
+// ── state ──
+const S = {
+  stage:"loading",            // loading | key | upload | analyzing | setup | chat | summary
+  apiKey:"", model:DEFAULT_MODEL,
+  error:null, fileName:"", pdfB64:null, digest:null,
+  scenario:"qa", difficulty:"normal", showDigest:false,
+  persona:"", msgs:[], sending:false, chatError:null, pending:null,
+  showFeedback:true, autoSpeak:false,
+  hints:null, hintLoading:false, micNote:"",
+  summary:null, summaryLoading:false, summaryError:false,
+};
+let recognition = null, listening = false, tickTimer = null, tick = 0;
+
+const app = document.getElementById("app");
+const $ = (id) => document.getElementById(id);
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function setStage(st){ S.stage = st; render(); }
+
+// ── API key (端末内に保存) ──
+const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model";
+
+function boot(){
+  try{
+    const k = localStorage.getItem(LS_KEY);
+    const m = localStorage.getItem(LS_MODEL);
+    if (k){ S.apiKey = k; if (m) S.model = m; setStage("upload"); return; }
+  }catch(e){}
+  setStage("key");
+}
+
+function applyKey(){
+  const k = ($("keyPaste") ? $("keyPaste").value : "").trim();
+  const m = (($("modelInput") ? $("modelInput").value : "").trim()) || DEFAULT_MODEL;
+  if (!/^[\x21-\x7E]{8,}$/.test(k)){
+    S.error = "APIキーの形式が正しくありません（半角8文字以上・スペースなし）。";
+    render(); return;
+  }
+  S.apiKey = k; S.model = m; S.error = null;
+  try{ localStorage.setItem(LS_KEY, k); localStorage.setItem(LS_MODEL, m); }catch(e){}
+  setStage("upload");
+}
+
+function clearKey(){
+  try{ localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_MODEL); }catch(e){}
+  S.apiKey = ""; S.model = DEFAULT_MODEL; S.error = null;
+  setStage("key");
+}
+
+// ── Gemini API ──
+async function callGemini(contents, opts){
+  opts = opts || {};
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/"
+    + encodeURIComponent(S.model) + ":generateContent?key=" + encodeURIComponent(S.apiKey);
+  const body = {
+    contents: contents,
+    generationConfig: {
+      maxOutputTokens: 4096,
+      temperature: opts.temperature == null ? 0.8 : opts.temperature,
+      responseMimeType: "application/json",
+    },
+  };
+  const res = await fetch(url, {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try{ data = await res.json(); }catch(e){}
+  if (!res.ok || (data && data.error)){
+    const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
+    if (/api key/i.test(msg)) throw new Error("APIキーが無効です。gemini_api_key.txt の内容を確認してください。");
+    if (/not found|is not supported/i.test(msg)) throw new Error("モデル「" + S.model + "」が見つかりません。txtファイルの model= 行を確認してください。");
+    if (/quota|rate/i.test(msg)) throw new Error("APIの利用上限に達しました。しばらく待ってからお試しください。");
+    throw new Error(msg);
+  }
+  const cand = data && data.candidates && data.candidates[0];
+  if (!cand || !cand.content || !cand.content.parts){
+    throw new Error("応答を取得できませんでした（finishReason: " + ((cand && cand.finishReason) || "不明") + "）。");
+  }
+  return cand.content.parts.map(p => p.text || "").join("");
+}
+
+function parseModelJSON(text){
+  const cleaned = String(text).replace(/```(?:json)?/gi, "").trim();
+  const s = cleaned.indexOf("{");
+  const e = cleaned.lastIndexOf("}");
+  if (s === -1 || e <= s) throw new Error("no json");
+  const raw = cleaned.slice(s, e + 1);
+  try{ return JSON.parse(raw); }
+  catch(err){ return JSON.parse(raw.replace(/[\r\n\t]+/g, " ")); }
+}
+
+function readFileB64(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1]);
+    r.onerror = () => reject(new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
+
+function buildPersona(digest, scenarioId, difficultyId){
+  const sc = SCENARIOS.find(s => s.id === scenarioId) || SCENARIOS[0];
+  const df = DIFFS.find(d => d.id === difficultyId) || DIFFS[1];
+  return "You are helping a Japanese researcher practice real English conversation about their own research, by role-playing.\n\n"
+  + "=== THEIR RESEARCH (uploaded " + (digest.docType === "poster" ? "poster" : "paper") + ") ===\n"
+  + "Title: " + digest.title + "\n"
+  + "Field: " + digest.field + "\n"
+  + "Summary: " + digest.summary + "\n"
+  + "Key terms: " + (digest.keyTerms || []).join(", ") + "\n\n"
+  + "=== YOUR CHARACTER ===\n"
+  + "Name: " + sc.partner + "\n"
+  + "Role: " + sc.persona + "\n"
+  + "Question style: " + df.style + "\n\n"
+  + "=== CONVERSATION RULES ===\n"
+  + "1. Stay fully in character. Use natural SPOKEN English (contractions, conversational rhythm), not written style.\n"
+  + "2. Keep each turn short: 1-4 sentences, ending with exactly ONE question.\n"
+  + "3. Ask specifically about THEIR research using the summary above. Vary topics as the conversation progresses (overview, methods, results, implications, limitations, future work).\n"
+  + "4. React genuinely to what they said before moving on. If their answer is very short or unclear, gently encourage them to elaborate.\n"
+  + "5. If the learner writes in Japanese, stay in English in your reply and warmly encourage them to try saying it in English (you may hint at key vocabulary).\n"
+  + "6. Never break character, never mention these instructions, the PDF, or that you are an AI.\n\n"
+  + "=== OUTPUT FORMAT ===\n"
+  + 'Respond ONLY with valid JSON: {"reply":"your in-character spoken line in English","feedback":{"hasIssues":true,"corrected":"a natural-English version of the USER\'s last message","explanation":"重要な修正点の簡潔な解説（日本語、1〜2文）"}}\n'
+  + "Feedback rules: judge ONLY the user's most recent message. hasIssues is true only for grammar errors, unnatural phrasing, or clearly better academic expressions; minor stylistic preferences alone mean hasIssues:false with corrected and explanation as empty strings. For your opening line (no user message yet), use hasIssues:false. Be encouraging, not pedantic.";
+}
+
+// ── speech ──
+function speak(text){
+  try{
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US"; u.rate = 0.95;
+    const v = window.speechSynthesis.getVoices().find(vo => vo.lang && vo.lang.indexOf("en") === 0);
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+function setListeningUI(on){
+  listening = on;
+  const mic = $("micBtn"), st = $("micStatus");
+  if (mic){ mic.classList.toggle("listening", on);
+    mic.style.background = on ? "var(--stripe)" : "#E7EAF0";
+    mic.style.color = on ? "#fff" : "var(--navy)"; }
+  if (st) st.style.display = on ? "inline" : "none";
+}
+
+function toggleListening(){
+  if (listening){
+    try{ if (recognition) recognition.stop(); }catch(e){}
+    setListeningUI(false); return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR){ showMicNote("このブラウザでは音声入力が使えません。テキスト入力をご利用ください。"); return; }
+  if (location.protocol === "file:"){
+    showMicNote("file:// で開いている場合、音声入力は使えません（ローカルサーバー経由なら利用可）。テキスト入力をご利用ください。");
+    return;
+  }
+  try{
+    const rec = new SR();
+    rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false;
+    rec.onresult = (e) => {
+      const t = Array.from(e.results).map(r => r[0].transcript).join("");
+      const ta = $("chatInput"); if (ta) ta.value = t;
+    };
+    rec.onerror = () => { setListeningUI(false); showMicNote("マイクを使用できませんでした。テキスト入力をご利用ください。"); };
+    rec.onend = () => setListeningUI(false);
+    recognition = rec; rec.start();
+    showMicNote(""); setListeningUI(true);
+  }catch(e){
+    showMicNote("マイクを使用できませんでした。テキスト入力をご利用ください。");
+    setListeningUI(false);
+  }
+}
+function showMicNote(t){ S.micNote = t; const n = $("micNote"); if (n){ n.textContent = t; n.style.display = t ? "block" : "none"; } }
+
+// ── upload & analyze ──
+async function handleFile(file){
+  if (!file) return;
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (!isPdf){ S.error = "PDFファイルをアップロードしてください。"; render(); return; }
+  if (file.size > 15 * 1024 * 1024){ S.error = "ファイルが大きすぎます。15MB以下のPDFをご利用ください。"; render(); return; }
+  S.error = null; S.fileName = file.name;
+  setStage("analyzing");
+  try{
+    S.pdfB64 = await readFileB64(file);
+    await analyzePdf();
+  }catch(e){
+    S.error = "PDFの読み込みに失敗しました。もう一度お試しください。"; render();
+  }
+}
+
+async function analyzePdf(){
+  S.error = null; render();
+  try{
+    const prompt = 'The attached PDF is an academic paper or a conference poster. Analyze it carefully.\n'
+      + 'Respond ONLY with valid JSON in this exact shape:\n'
+      + '{"title":"the title as written in the document","field":"研究分野（日本語で簡潔に）","docType":"paper or poster","summary":"A thorough digest in English, 250-330 words, covering: research question and motivation, methodology, key findings with specific numbers or results where available, main contributions, and limitations. Write it so a conversation partner could ask informed, specific questions about this work.","keyTerms":["6-10 key technical terms from the document"],"sampleQuestions":["3 short questions in English that an audience member might realistically ask"]}';
+    const out = await callGemini([
+      { role:"user", parts:[
+        { inline_data:{ mime_type:"application/pdf", data:S.pdfB64 } },
+        { text: prompt },
+      ]},
+    ], { temperature:0.3 });
+    const parsed = parseModelJSON(out);
+    if (!parsed.summary || !parsed.title) throw new Error("bad digest");
+    S.digest = parsed;
+    setStage("setup");
+  }catch(e){
+    S.error = "PDFの分析に失敗しました。" + (e && e.message ? "（" + e.message + "）" : "");
+    render();
+  }
+}
+
+// ── chat ──
+function historyToContents(history){
+  const contents = [
+    { role:"user", parts:[{ text: S.persona + "\n\nBegin the conversation now with your opening line." }] },
+  ];
+  for (const m of history){
+    if (m.role === "ai"){
+      contents.push({ role:"model", parts:[{ text: JSON.stringify({
+        reply: m.text,
+        feedback: m.feedback || { hasIssues:false, corrected:"", explanation:"" },
+      })}]});
+    } else {
+      contents.push({ role:"user", parts:[{ text: m.text }] });
+    }
+  }
+  return contents;
+}
+
+async function runTurn(history){
+  S.sending = true; S.chatError = null;
+  renderMsgs();
+  try{
+    const out = await callGemini(historyToContents(history), { temperature:0.9 });
+    let parsed;
+    try{ parsed = parseModelJSON(out); }
+    catch(e){ parsed = { reply: String(out).replace(/```/g,"").trim(), feedback:{ hasIssues:false, corrected:"", explanation:"" } }; }
+    S.msgs = history.concat([{ role:"ai", text: parsed.reply || "…", feedback: parsed.feedback || null }]);
+    if (S.autoSpeak) speak(parsed.reply || "");
+  }catch(e){
+    S.pending = history; S.msgs = history;
+    S.chatError = "エラー: " + (e && e.message ? e.message : "通信に失敗しました。");
+  }finally{
+    S.sending = false; renderMsgs();
+  }
+}
+
+function startChat(){
+  S.persona = buildPersona(S.digest, S.scenario, S.difficulty);
+  S.msgs = []; S.hints = null; S.chatError = null; S.summary = null;
+  setStage("chat");
+  runTurn([]);
+}
+
+function sendMessage(){
+  const ta = $("chatInput"); if (!ta) return;
+  const text = ta.value.trim();
+  if (!text || S.sending) return;
+  if (listening) toggleListening();
+  ta.value = ""; S.hints = null;
+  runTurn(S.msgs.concat([{ role:"user", text }]));
+}
+
+async function getHints(){
+  if (S.hintLoading || S.sending) return;
+  const lastAI = S.msgs.slice().reverse().find(m => m.role === "ai");
+  if (!lastAI) return;
+  S.hintLoading = true; S.hints = null; renderMsgs();
+  try{
+    const recent = S.msgs.slice(-4).map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
+    const prompt = "A Japanese researcher is practicing English conversation about their own research.\n"
+      + "Research summary: " + String(S.digest.summary).slice(0, 800) + "\n"
+      + "Recent exchange:\n" + recent + "\n"
+      + 'The conversation partner just said: "' + lastAI.text + '"\n'
+      + "Give 2 distinct example responses the researcher could say next, at an intermediate English level, each 1-2 sentences.\n"
+      + 'Respond ONLY with valid JSON: {"hints":[{"english":"...","japanese":"自然な日本語訳"},{"english":"...","japanese":"..."}]}';
+    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.7 });
+    const parsed = parseModelJSON(out);
+    S.hints = parsed.hints || [];
+  }catch(e){ S.hints = []; }
+  finally{ S.hintLoading = false; renderMsgs(); }
+}
+
+// ── summary ──
+async function genSummary(){
+  S.summary = null; S.summaryError = false; S.summaryLoading = true; render();
+  try{
+    const transcript = S.msgs.map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
+    const prompt = "以下は日本人研究者の英会話練習の記録です（Partner=会話相手、Learner=練習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
+      + transcript + "\n---\n"
+      + 'Respond ONLY with valid JSON: {"overall":"総評（日本語2〜3文、励ましを含む）","strengths":["良かった点（日本語）を2〜3個"],"improvements":["具体的な改善ポイント（日本語）を2〜3個"],"phrases":[{"english":"この場面で使える便利な英語表現","japanese":"日本語訳"},{"english":"...","japanese":"..."},{"english":"...","japanese":"..."}]}';
+    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5 });
+    S.summary = parseModelJSON(out);
+  }catch(e){ S.summaryError = true; }
+  finally{ S.summaryLoading = false; render(); }
+}
+
+function endSession(){
+  try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  const userTurns = S.msgs.filter(m => m.role === "user").length;
+  if (userTurns === 0){ S.msgs = []; setStage("setup"); return; }
+  setStage("summary");
+  genSummary();
+}
+
+function resetAll(){
+  S.error = null; S.fileName = ""; S.pdfB64 = null; S.digest = null;
+  S.msgs = []; S.hints = null; S.summary = null; S.chatError = null; S.showDigest = false;
+  setStage("upload");
+}
+
+// ════════════════════════ RENDER ════════════════════════
+
+function render(){
+  if (tickTimer){ clearInterval(tickTimer); tickTimer = null; }
+  switch (S.stage){
+    case "loading":   app.innerHTML = '<div style="padding:60px;text-align:center;color:var(--sub);font-size:13px">起動中…</div>'; break;
+    case "key":       renderKey(); break;
+    case "upload":    renderUpload(); break;
+    case "analyzing": renderAnalyzing(); break;
+    case "setup":     renderSetup(); break;
+    case "chat":      renderChat(); break;
+    case "summary":   renderSummary(); break;
+  }
+}
+
+// ── key setup screen ──
+function renderKey(){
+  app.innerHTML = '<div class="wrap" style="padding-top:56px;padding-bottom:40px">'
+    + '<div class="mono eyebrow red">SETUP ─ GEMINI API</div>'
+    + '<h1 class="display" style="font-size:26px;color:var(--navy-deep);margin-top:10px;line-height:1.4">APIキーを設定</h1>'
+    + '<p style="font-size:13px;color:var(--sub);line-height:1.8;margin-top:14px">'
+    + 'Gemini APIキーは <b style="color:var(--ink)">Google AI Studio</b>（aistudio.google.com/apikey）で無料で取得できます。'
+    + '入力したキーは<b>この端末のブラウザ内にのみ保存</b>され、Googleとの通信以外には使われません。</p>'
+    + '<div class="card" style="margin-top:20px;padding:18px">'
+    +   '<div style="font-size:13px;font-weight:700">APIキー</div>'
+    +   '<input id="keyPaste" type="password" placeholder="APIキーを貼り付け" autocomplete="off" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
+    +   '<div style="font-size:13px;font-weight:700;margin-top:16px">モデル <span style="font-weight:400;font-size:11px;color:var(--sub)">（通常は変更不要）</span></div>'
+    +   '<input id="modelInput" type="text" value="' + esc(S.model) + '" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
+    +   '<button id="keySaveBtn" class="btn btn-stripe" style="margin-top:18px">保存して始める</button>'
+    + '</div>'
+    + (S.error ? '<div class="errbox" style="margin-top:14px">' + esc(S.error) + '</div>' : '')
+    + '<p style="font-size:11px;color:var(--sub);margin-top:20px;line-height:1.7">共有端末で使う場合は、利用後にトップ画面の「キーを変更・削除」からキーを消去してください。</p>'
+    + '</div>';
+  $("keySaveBtn").addEventListener("click", applyKey);
+  $("keyPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") applyKey(); });
+}
+
+// ── upload ──
+function renderUpload(){
+  let scenes = "";
+  for (const s of SCENARIOS){
+    scenes += '<div style="display:flex;gap:12px;align-items:flex-start;margin-top:12px">'
+      + '<div class="mono" style="font-size:10px;background:#E7EAF0;color:var(--navy);padding:2px 6px;border-radius:4px;margin-top:2px;white-space:nowrap">' + s.en + '</div>'
+      + '<div style="font-size:12px;color:var(--sub);line-height:1.7"><b style="color:var(--ink)">' + s.label + '</b>　' + s.desc + '</div></div>';
+  }
+  app.innerHTML = '<div class="wrap" style="padding-top:56px;padding-bottom:40px">'
+    + '<div class="mono eyebrow red">CONFERENCE ENGLISH TRAINER · GEMINI</div>'
+    + '<h1 class="display" style="font-size:32px;font-weight:700;color:var(--navy-deep);margin-top:12px;line-height:1.35">あなたの研究で、<br>英会話を練習する。</h1>'
+    + '<p style="font-size:13px;color:var(--sub);line-height:1.9;margin-top:16px">論文や学会ポスターのPDFをアップロードすると、AIがその内容を読み込み、国際学会の質疑応答・ポスターセッション・懇親会を想定した英会話の相手になります。</p>'
+    + '<div id="dropZone" style="margin-top:30px;border:2px dashed var(--line);background:var(--paper);border-radius:16px;padding:32px;text-align:center;cursor:pointer">'
+    +   '<div style="width:48px;height:48px;border-radius:12px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:20px">📄</div>'
+    +   '<div style="margin-top:16px;font-weight:700;color:var(--navy-deep)">論文・ポスターのPDFを選択</div>'
+    +   '<div style="margin-top:4px;font-size:12px;color:var(--sub)">クリックして選択、またはドラッグ＆ドロップ（15MBまで）</div>'
+    + '</div>'
+    + '<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none">'
+    + (S.error ? '<div class="errbox" style="margin-top:16px">' + esc(S.error) + '</div>' : '')
+    + '<div style="margin-top:32px">' + scenes + '</div>'
+    + '<p style="font-size:11px;color:var(--sub);margin-top:36px;line-height:1.7">APIキー: この端末に保存済み / モデル: ' + esc(S.model)
+    + ' ─ <button id="reKeyBtn" style="color:var(--navy);text-decoration:underline;font-size:11px">キーを変更・削除</button></p>'
+    + '</div>';
+
+  const dz = $("dropZone"), inp = $("pdfInput");
+  dz.addEventListener("click", () => inp.click());
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.borderColor = "var(--navy)"; dz.style.background = "#EAEDF2"; });
+  dz.addEventListener("dragleave", () => { dz.style.borderColor = "var(--line)"; dz.style.background = "var(--paper)"; });
+  dz.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
+  inp.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
+  $("reKeyBtn").addEventListener("click", clearKey);
+}
+
+// ── analyzing ──
+function renderAnalyzing(){
+  if (S.error){
+    app.innerHTML = '<div class="wrap" style="display:flex;min-height:100dvh;align-items:center;justify-content:center">'
+      + '<div style="text-align:center;max-width:340px">'
+      + '<div class="errbox">' + esc(S.error) + '</div>'
+      + '<div style="display:flex;gap:10px;justify-content:center;margin-top:18px">'
+      + '<button id="reAnalyzeBtn" class="btn btn-navy" style="width:auto;padding:10px 18px;font-size:13px">もう一度分析する</button>'
+      + '<button id="backBtn" class="btn btn-ghost" style="width:auto;padding:10px 18px;font-size:13px">戻る</button>'
+      + '</div></div></div>';
+    $("reAnalyzeBtn").addEventListener("click", () => { if (S.pdfB64) analyzePdf(); });
+    $("backBtn").addEventListener("click", resetAll);
+    return;
+  }
+  app.innerHTML = '<div style="display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px">'
+    + '<div style="text-align:center">'
+    + '<div class="card" style="width:200px;margin:0 auto;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">'
+    +   '<div class="mono" style="font-size:10px;color:#fff;background:var(--navy);padding:6px 0">READING</div>'
+    +   '<div style="padding:20px 16px">'
+    +     '<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(S.fileName) + '</div>'
+    +     '<div style="display:flex;gap:6px;justify-content:center;margin-top:16px"><span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span></div>'
+    +   '</div>'
+    + '</div>'
+    + '<p id="analyzeMsg" style="margin-top:24px;font-size:13px;color:var(--sub)">' + ANALYZE_MSGS[0] + '</p>'
+    + '</div></div>';
+  tick = 0;
+  tickTimer = setInterval(() => {
+    tick += 1;
+    const n = $("analyzeMsg");
+    if (n) n.textContent = ANALYZE_MSGS[tick % ANALYZE_MSGS.length];
+  }, 2400);
+}
+
+// ── setup ──
+function renderSetup(){
+  const d = S.digest || {};
+  let sceneBtns = "";
+  for (const s of SCENARIOS){
+    const on = S.scenario === s.id;
+    sceneBtns += '<button class="scene-btn' + (on ? " on" : "") + '" data-scene="' + s.id + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<span style="font-weight:700;font-size:14px;color:' + (on ? "#fff" : "var(--ink)") + '">' + s.label + '</span>'
+      + '<span class="mono" style="font-size:10px;color:' + (on ? "#B9C3D6" : "var(--sub)") + '">' + s.en + ' · ' + s.partner + '</span></div>'
+      + '<div style="margin-top:4px;font-size:12px;color:' + (on ? "#C9D1E0" : "var(--sub)") + '">' + s.desc + '</div></button>';
+  }
+  let diffBtns = "";
+  for (const df of DIFFS){
+    diffBtns += '<button class="diff-btn' + (S.difficulty === df.id ? " on" : "") + '" data-diff="' + df.id + '">' + df.label + '</button>';
+  }
+  let sampleQ = "";
+  if (d.sampleQuestions && d.sampleQuestions.length){
+    sampleQ = '<div style="margin-top:24px"><div class="mono eyebrow">LIKELY QUESTIONS ─ 想定質問</div><div style="margin-top:8px">';
+    for (const q of d.sampleQuestions.slice(0,3)){
+      sampleQ += '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub);margin-bottom:6px">' + esc(q) + '</div>';
+    }
+    sampleQ += '</div></div>';
+  }
+  app.innerHTML = '<div class="wrap" style="padding-top:32px;padding-bottom:40px">'
+    + '<div class="card" style="overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05)">'
+    +   '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--navy);padding:8px 16px">'
+    +     '<span class="mono" style="font-size:10px;color:#fff">SPEAKER</span>'
+    +     '<span class="mono" style="font-size:10px;color:#fff;background:var(--stripe);padding:2px 6px;border-radius:4px">' + (d.docType === "poster" ? "POSTER" : "PAPER") + '</span></div>'
+    +   '<div style="padding:16px 20px">'
+    +     '<div class="display" style="font-weight:700;line-height:1.5;color:var(--navy-deep)">' + esc(d.title) + '</div>'
+    +     '<div style="margin-top:8px;font-size:12px;color:var(--sub)">' + esc(d.field) + '</div>'
+    +     '<button id="digestToggle" style="margin-top:12px;font-size:12px;color:var(--navy)">▾ AIが読み取った要約を' + (S.showDigest ? "閉じる" : "確認する") + '</button>'
+    +     (S.showDigest ? '<p style="margin-top:8px;font-size:12px;line-height:1.8;color:var(--sub);border-top:1px solid var(--line);padding-top:12px">' + esc(d.summary) + '</p>' : '')
+    +   '</div></div>'
+    + '<div style="margin-top:28px"><div class="mono eyebrow">SCENE ─ 場面を選ぶ</div><div style="margin-top:8px">' + sceneBtns + '</div></div>'
+    + '<div style="margin-top:20px"><div class="mono eyebrow">LEVEL ─ 質問の難易度</div><div style="display:flex;gap:8px;margin-top:8px">' + diffBtns + '</div></div>'
+    + sampleQ
+    + '<button id="startBtn" class="btn btn-stripe" style="margin-top:32px;padding:15px">会話をはじめる</button>'
+    + '<button id="resetBtn" style="display:block;margin:14px auto 0;font-size:12px;color:var(--sub)">別のPDFをアップロードする</button>'
+    + '</div>';
+
+  $("digestToggle").addEventListener("click", () => { S.showDigest = !S.showDigest; render(); });
+  document.querySelectorAll("[data-scene]").forEach(b => b.addEventListener("click", () => { S.scenario = b.getAttribute("data-scene"); render(); }));
+  document.querySelectorAll("[data-diff]").forEach(b => b.addEventListener("click", () => { S.difficulty = b.getAttribute("data-diff"); render(); }));
+  $("startBtn").addEventListener("click", startChat);
+  $("resetBtn").addEventListener("click", resetAll);
+}
+
+// ── chat ──
+function renderChat(){
+  const sc = SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
+  const srOk = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  app.innerHTML = '<div class="chat-root">'
+    + '<div class="chat-head"><div style="max-width:600px;margin:0 auto">'
+    +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +     '<div style="min-width:0">'
+    +       '<div class="mono" style="font-size:10px;color:#9FB0CC">' + sc.en + ' · ' + sc.partner + '</div>'
+    +       '<div style="font-size:12px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(S.digest && S.digest.title) + '</div></div>'
+    +     '<button id="endBtn" style="flex-shrink:0;font-size:12px;font-weight:700;background:var(--stripe);color:#fff;padding:7px 12px;border-radius:8px">終了する</button></div>'
+    +   '<div style="display:flex;gap:8px;margin-top:8px">'
+    +     '<button id="fbToggle" class="pill' + (S.showFeedback ? " on" : "") + '">添削 ' + (S.showFeedback ? "ON" : "OFF") + '</button>'
+    +     '<button id="spToggle" class="pill' + (S.autoSpeak ? " on" : "") + '">自動読み上げ ' + (S.autoSpeak ? "ON" : "OFF") + '</button></div>'
+    + '</div></div>'
+    + '<div class="chat-body" id="msgScroll"><div id="msgList" style="max-width:600px;margin:0 auto;padding:20px 16px"></div></div>'
+    + '<div class="chat-foot"><div style="max-width:600px;margin:0 auto">'
+    +   '<div style="display:flex;justify-content:space-between;align-items:center">'
+    +     '<button id="hintBtn" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--navy);padding:4px 0">💡 <span id="hintBtnLabel">答え方のヒント</span></button>'
+    +     '<span id="micStatus" style="display:none;font-size:11px;font-weight:700;color:var(--stripe)">● 聞き取り中… 英語で話してください</span></div>'
+    +   '<div id="micNote" style="display:' + (S.micNote ? "block" : "none") + ';font-size:11px;color:var(--sub);margin-top:4px">' + esc(S.micNote) + '</div>'
+    +   '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px">'
+    +     '<textarea id="chatInput" rows="2" placeholder="英語で返答してみましょう…" style="flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;outline:none;color:var(--ink)"></textarea>'
+    +     (srOk ? '<button id="micBtn" class="iconbtn" style="background:#E7EAF0;color:var(--navy)">🎙</button>' : '')
+    +     '<button id="sendBtn" class="iconbtn" style="background:var(--navy);color:#fff">➤</button></div>'
+    + '</div></div></div>';
+
+  $("endBtn").addEventListener("click", endSession);
+  $("fbToggle").addEventListener("click", () => { S.showFeedback = !S.showFeedback; render(); renderMsgs(); });
+  $("spToggle").addEventListener("click", () => { S.autoSpeak = !S.autoSpeak; render(); renderMsgs(); });
+  $("hintBtn").addEventListener("click", getHints);
+  $("sendBtn").addEventListener("click", sendMessage);
+  const mic = $("micBtn");
+  if (mic) mic.addEventListener("click", toggleListening);
+  $("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+  });
+  renderMsgs();
+}
+
+function renderMsgs(){
+  const list = $("msgList");
+  if (!list) return;
+  const sc = SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
+  let html = "";
+  S.msgs.forEach((m, i) => {
+    if (m.role === "ai"){
+      html += '<div class="msg" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px">'
+        + '<div class="avatar">' + sc.initial + '</div>'
+        + '<div style="max-width:82%"><div class="bub-ai">' + esc(m.text) + '</div>'
+        + '<button class="speakBtn" data-i="' + i + '" style="margin-top:6px;font-size:11px;color:var(--sub)">🔊 読み上げる</button></div></div>';
+    } else {
+      const next = S.msgs[i + 1];
+      const fb = next && next.role === "ai" ? next.feedback : null;
+      html += '<div class="msg" style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:16px">'
+        + '<div class="bub-user">' + esc(m.text) + '</div>';
+      if (S.showFeedback && fb && fb.hasIssues && fb.corrected){
+        html += '<div class="fbcard">'
+          + '<div class="mono" style="font-size:9px;font-weight:500;color:var(--amber-ink)">BETTER ─ より自然には</div>'
+          + '<div style="margin-top:4px;font-size:14px;font-weight:700;color:#4A3A0E">' + esc(fb.corrected) + '</div>'
+          + (fb.explanation ? '<div style="margin-top:4px;font-size:12px;line-height:1.7;color:var(--amber-ink)">' + esc(fb.explanation) + '</div>' : '')
+          + '</div>';
+      } else if (S.showFeedback && fb && !fb.hasIssues){
+        html += '<div style="margin-top:6px;font-size:10px;font-weight:700;background:var(--green-bg);color:var(--green);padding:2px 8px;border-radius:999px">✓ Natural English</div>';
+      }
+      html += '</div>';
+    }
+  });
+  if (S.sending){
+    html += '<div class="msg" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px">'
+      + '<div class="avatar">' + sc.initial + '</div>'
+      + '<div class="bub-ai" style="display:flex;gap:6px"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>';
+  }
+  if (S.chatError){
+    html += '<div class="errbox" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px">'
+      + '<span>' + esc(S.chatError) + '</span>'
+      + '<button id="retryBtn" style="flex-shrink:0;font-size:12px;font-weight:700;background:var(--stripe);color:#fff;padding:7px 12px;border-radius:8px">再試行</button></div>';
+  }
+  if (S.hints){
+    html += '<div class="card" style="padding:16px;margin-bottom:16px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<div class="mono" style="font-size:10px;font-weight:500;color:var(--navy)">HINTS ─ こう答えてみよう（タップで入力）</div>'
+      + '<button id="hintClose" style="color:var(--sub);font-size:14px">✕</button></div>';
+    if (!S.hints.length){
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--sub)">ヒントを取得できませんでした。もう一度お試しください。</div>';
+    } else {
+      S.hints.forEach((h, i) => {
+        html += '<button class="hintbtn" data-h="' + i + '">'
+          + '<div style="font-size:14px;font-weight:700;color:var(--ink)">' + esc(h.english) + '</div>'
+          + '<div style="margin-top:2px;font-size:12px;color:var(--sub)">' + esc(h.japanese) + '</div></button>';
+      });
+    }
+    html += '</div>';
+  }
+  list.innerHTML = html;
+
+  list.querySelectorAll(".speakBtn").forEach(b => b.addEventListener("click", () => {
+    const m = S.msgs[Number(b.getAttribute("data-i"))];
+    if (m) speak(m.text);
+  }));
+  const retry = $("retryBtn");
+  if (retry) retry.addEventListener("click", () => { if (S.pending) runTurn(S.pending); });
+  const hc = $("hintClose");
+  if (hc) hc.addEventListener("click", () => { S.hints = null; renderMsgs(); });
+  list.querySelectorAll(".hintbtn").forEach(b => b.addEventListener("click", () => {
+    const h = S.hints && S.hints[Number(b.getAttribute("data-h"))];
+    const ta = $("chatInput");
+    if (h && ta){ ta.value = h.english; ta.focus(); }
+  }));
+  const lbl = $("hintBtnLabel");
+  if (lbl) lbl.textContent = S.hintLoading ? "ヒントを考え中…" : "答え方のヒント";
+  const scr = $("msgScroll");
+  if (scr) scr.scrollTop = scr.scrollHeight;
+}
+
+// ── summary ──
+function renderSummary(){
+  const userMsgs = S.msgs.filter(m => m.role === "user").length;
+  let issueCount = 0;
+  S.msgs.forEach((m, i) => {
+    if (m.role === "user"){
+      const next = S.msgs[i + 1];
+      const fb = next && next.role === "ai" ? next.feedback : null;
+      if (fb && fb.hasIssues) issueCount += 1;
+    }
+  });
+  let body = "";
+  if (S.summaryLoading){
+    body = '<div style="margin-top:32px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub)">'
+      + '<span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span>'
+      + '<span style="margin-left:4px">フィードバックを作成しています…</span></div>';
+  } else if (S.summaryError){
+    body = '<div style="margin-top:32px"><p style="font-size:13px;color:var(--red-ink)">フィードバックの作成に失敗しました。</p>'
+      + '<button id="reSummaryBtn" class="btn btn-navy" style="width:auto;padding:10px 18px;font-size:13px;margin-top:12px">もう一度作成する</button></div>';
+  } else if (S.summary){
+    const sm = S.summary;
+    let strengths = "", improvements = "", phrases = "";
+    (sm.strengths || []).forEach(s => { strengths += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
+    (sm.improvements || []).forEach(s => { improvements += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
+    (sm.phrases || []).forEach((p, i) => {
+      phrases += '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px">'
+        + '<button class="phraseSpeak" data-p="' + i + '" style="flex-shrink:0;background:#E7EAF0;color:var(--navy);border-radius:6px;padding:3px 6px;font-size:12px;margin-top:2px">🔊</button>'
+        + '<div><div style="font-size:14px;font-weight:700">' + esc(p.english) + '</div>'
+        + '<div style="font-size:12px;color:var(--sub);margin-top:2px">' + esc(p.japanese) + '</div></div></div>';
+    });
+    body = '<div style="margin-top:24px">'
+      + '<div class="card" style="padding:16px;font-size:14px;line-height:1.8">' + esc(sm.overall) + '</div>'
+      + '<div style="background:var(--green-bg);border:1px solid #BCD9C6;border-radius:16px;padding:16px;margin-top:14px">'
+      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--green)">GOOD ─ 良かった点</div>'
+      +   '<ul style="list-style:none;font-size:13px;color:#1F5236;margin-top:4px">' + strengths + '</ul></div>'
+      + '<div style="background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:16px;padding:16px;margin-top:14px">'
+      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--amber-ink)">NEXT ─ 改善ポイント</div>'
+      +   '<ul style="list-style:none;font-size:13px;color:var(--amber-ink);margin-top:4px">' + improvements + '</ul></div>'
+      + '<div class="card" style="padding:16px;margin-top:14px">'
+      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--navy)">PHRASES ─ 使える表現</div>' + phrases + '</div>'
+      + '</div>';
+  }
+  app.innerHTML = '<div class="wrap" style="padding-top:32px;padding-bottom:40px">'
+    + '<div class="mono eyebrow red">SESSION REPORT</div>'
+    + '<h2 class="display" style="font-size:24px;font-weight:700;color:var(--navy-deep);margin-top:8px">おつかれさまでした！</h2>'
+    + '<div style="display:flex;gap:8px;margin-top:12px">'
+    +   '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub)">発話 <b style="color:var(--ink)">' + userMsgs + '</b> 回</div>'
+    +   '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub)">自然な英語 <b style="color:var(--green)">' + Math.max(userMsgs - issueCount, 0) + '</b> / ' + userMsgs + '</div></div>'
+    + body
+    + '<div style="margin-top:32px">'
+    +   '<button id="againBtn" class="btn btn-navy">⟲ 同じ資料でもう一度練習する</button>'
+    +   '<button id="newPdfBtn" class="btn btn-ghost" style="margin-top:10px">別のPDFで練習する</button></div>'
+    + '</div>';
+
+  const rs = $("reSummaryBtn");
+  if (rs) rs.addEventListener("click", genSummary);
+  document.querySelectorAll(".phraseSpeak").forEach(b => b.addEventListener("click", () => {
+    const p = S.summary && S.summary.phrases && S.summary.phrases[Number(b.getAttribute("data-p"))];
+    if (p) speak(p.english);
+  }));
+  $("againBtn").addEventListener("click", () => { S.msgs = []; S.summary = null; setStage("setup"); });
+  $("newPdfBtn").addEventListener("click", resetAll);
+}
+
+// ── boot ──
+render();
+boot();
+</script>
+</body>
+</html>
