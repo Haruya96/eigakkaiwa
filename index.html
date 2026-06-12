@@ -161,12 +161,14 @@ async function callGemini(contents, opts){
   const body = {
     contents: contents,
     generationConfig: {
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       temperature: opts.temperature == null ? 0.8 : opts.temperature,
       responseMimeType: "application/json",
     },
   };
   if (opts.schema) body.generationConfig.responseSchema = opts.schema;
+  // gemini-2.5-flash系は内部思考トークンが出力上限を食い潰し空応答になることがあるため無効化
+  if (String(S.model).indexOf("2.5-flash") !== -1) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
   const res = await fetch(url, {
     method:"POST", headers:{ "Content-Type":"application/json" },
     body: JSON.stringify(body),
@@ -569,7 +571,7 @@ async function genSummary(){
       + 'Respond ONLY with valid JSON: {"overall":"総評（日本語2〜3文、励ましを含む）","strengths":["良かった点（日本語）を2〜3個"],"improvements":["具体的な改善ポイント（日本語）を2〜3個"],"phrases":[{"english":"この場面で使える便利な英語表現","japanese":"日本語訳"},{"english":"...","japanese":"..."},{"english":"...","japanese":"..."}]}';
     const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
     S.summary = parseModelJSON(out);
-  }catch(e){ S.summaryError = true; }
+  }catch(e){ S.summaryError = true; S.summaryErrorMsg = (e && e.message) ? e.message : ""; }
   finally{ S.summaryLoading = false; render(); }
 }
 
@@ -872,7 +874,7 @@ function renderSummary(){
       + '<span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span>'
       + '<span style="margin-left:4px">フィードバックを作成しています…</span></div>';
   } else if (S.summaryError){
-    body = '<div style="margin-top:32px"><p style="font-size:13px;color:var(--red-ink)">フィードバックの作成に失敗しました。</p>'
+    body = '<div style="margin-top:32px"><p style="font-size:13px;color:var(--red-ink)">フィードバックの作成に失敗しました。' + (S.summaryErrorMsg ? '<br><span style="font-size:11px">理由: ' + esc(S.summaryErrorMsg) + '</span>' : '') + '</p>'
       + '<button id="reSummaryBtn" class="btn btn-navy" style="width:auto;padding:10px 18px;font-size:13px;margin-top:12px">もう一度作成する</button></div>';
   } else if (S.summary){
     const sm = S.summary;
