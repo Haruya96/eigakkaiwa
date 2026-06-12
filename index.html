@@ -562,15 +562,75 @@ async function getHints(){
 }
 
 // ── summary ──
+// モデルが3区分を1つの配列に平坦化して返す異常パターンを検出し、正しい構造に復元する
+function sanitizeSummary(sm){
+  sm = sm || {};
+  const norm = (x) => String(x == null ? "" : x).trim();
+  const isLabel = (x, name) => norm(x).toLowerCase().replace(/^[・\-\*\s"':：]+|["'\s:：]+$/g, "") === name;
+  const PLACEHOLDERS = ["具体的な改善ポイント", "良かった点", "この場面で使える便利な英語表現", "日本語訳", "..."];
+  const LABELS = ["improvements", "phrases", "strengths", "english", "japanese", "overall"];
+  const isJunk = (x) => {
+    const t = norm(x);
+    return !t || PLACEHOLDERS.indexOf(t) !== -1 || LABELS.some(n => isLabel(t, n));
+  };
+
+  let strengths = Array.isArray(sm.strengths) ? sm.strengths.map(norm) : [];
+  let improvements = Array.isArray(sm.improvements) ? sm.improvements.map(norm) : [];
+  let phrases = Array.isArray(sm.phrases) ? sm.phrases : [];
+
+  // 平坦化検出: strengths内に "improvements" / "phrases" のラベルが混入しているケース
+  const idxImp = strengths.findIndex(x => isLabel(x, "improvements"));
+  const idxPhr = strengths.findIndex(x => isLabel(x, "phrases"));
+  if (idxImp !== -1 || idxPhr !== -1){
+    const flat = strengths;
+    const cut1 = idxImp !== -1 ? idxImp : (idxPhr !== -1 ? idxPhr : flat.length);
+    const cut2 = idxPhr !== -1 ? idxPhr : flat.length;
+    strengths = flat.slice(0, cut1);
+    if (!improvements.length && idxImp !== -1) improvements = flat.slice(idxImp + 1, cut2);
+    if ((!phrases || !phrases.length) && idxPhr !== -1){
+      const tail = flat.slice(idxPhr + 1);
+      const ps = [];
+      let cur = null, mode = "";
+      for (const item of tail){
+        if (isLabel(item, "english")){ mode = "e"; continue; }
+        if (isLabel(item, "japanese")){ mode = "j"; continue; }
+        if (isJunk(item)) continue;
+        if (mode === "e"){ cur = { english: norm(item), japanese: "" }; ps.push(cur); mode = ""; }
+        else if (mode === "j"){ if (cur) cur.japanese = norm(item); mode = ""; cur = null; }
+        else if (cur && !cur.japanese){ cur.japanese = norm(item); cur = null; }
+        else { cur = { english: norm(item), japanese: "" }; ps.push(cur); }
+      }
+      phrases = ps;
+    }
+  }
+
+  strengths = strengths.filter(x => !isJunk(x));
+  improvements = improvements.filter(x => !isJunk(x));
+
+  // phrasesが文字列配列で返ってきた場合は english/japanese のペアに変換
+  if (phrases.length && typeof phrases[0] === "string"){
+    const ps = [];
+    const items = phrases.map(norm).filter(x => !isJunk(x));
+    for (let i = 0; i < items.length; i += 2){
+      ps.push({ english: items[i], japanese: items[i + 1] || "" });
+    }
+    phrases = ps;
+  }
+  phrases = (phrases || []).filter(p => p && norm(p.english) && !isJunk(p.english));
+
+  return { overall: norm(sm.overall), strengths: strengths, improvements: improvements, phrases: phrases };
+}
+
 async function genSummary(){
   S.summary = null; S.summaryError = false; S.summaryLoading = true; render();
   try{
     const transcript = S.msgs.map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
     const prompt = "以下は日本人研究者の英会話練習の記録です（Partner=会話相手、Learner=練習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
       + transcript + "\n---\n"
-      + 'Respond ONLY with valid JSON: {"overall":"総評（日本語2〜3文、励ましを含む）","strengths":["良かった点（日本語）を2〜3個"],"improvements":["具体的な改善ポイント（日本語）を2〜3個"],"phrases":[{"english":"この場面で使える便利な英語表現","japanese":"日本語訳"},{"english":"...","japanese":"..."},{"english":"...","japanese":"..."}]}';
+      + 'Respond ONLY with valid JSON with these fields: overall（総評、日本語2〜3文、励ましを含む）, strengths（良かった点の配列、日本語で2〜3個）, improvements（具体的な改善ポイントの配列、日本語で2〜3個）, phrases（この場面で使える英語表現の配列、各要素は english と japanese を持つオブジェクト、3〜4個）.\n'
+      + '重要: strengths・improvements・phrases は必ず別々の配列に分けること。キー名（improvements, phrases, english, japanese 等）やテンプレート文を配列の要素として出力しないこと。';
     const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
-    S.summary = parseModelJSON(out);
+    S.summary = sanitizeSummary(parseModelJSON(out));
   }catch(e){ S.summaryError = true; S.summaryErrorMsg = (e && e.message) ? e.message : ""; }
   finally{ S.summaryLoading = false; render(); }
 }
