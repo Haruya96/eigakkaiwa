@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-<title>研究英会話トレーナー</title>
+<meta name="referrer" content="no-referrer">
+<title>Gemini 英会話トレーナー</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#22314E">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -78,6 +79,8 @@ textarea,input{font-family:inherit}
 .backup-card{background:#F7FAFF;border:1px solid #C8D6EC;border-radius:16px;padding:16px;margin-top:14px}
 .backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.scene-example{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;color:var(--sub)}
+.scene-example:hover,.scene-example:focus-visible{border-color:var(--navy);color:var(--navy);outline:none}
 .safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media (max-width:420px){
   .phrase-row{flex-wrap:wrap}
@@ -91,12 +94,12 @@ textarea,input{font-family:inherit}
 <script>
 "use strict";
 // ════════════════════════════════════════════════════════
-// 研究英会話トレーナー (Gemini API版)
-// APIキー: 同じフォルダの gemini_api_key.txt から自動読み込み
-//   (file:// で開いた場合は自動読み込み不可 → ファイル選択 / 貼り付け)
+// Gemini 英会話トレーナー
+// APIキー・モデル・表現帳は利用中のブラウザ内にのみ保存
 // ════════════════════════════════════════════════════════
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.7-flash";
+const TTS_MODEL = "gemini-3.1-flash-tts-preview";
 
 const SCENARIOS = [
   { id:"qa", label:"口頭発表 Q&A", en:"ORAL Q&A",
@@ -115,28 +118,36 @@ const SCENARIOS = [
 
 const DIFFS = [
   { id:"gentle", label:"やさしめ", style:"Ask supportive, fundamental questions in simple, clear English. Be warm and encouraging. Avoid aggressive or jargon-heavy questions." },
-  { id:"normal", label:"標準", style:"Ask realistic academic questions like a genuinely curious fellow researcher, at a natural difficulty level." },
-  { id:"tough", label:"鋭め", style:"Be a sharp but professional questioner: probe limitations, alternative explanations, validity, and novelty, and politely push back when answers are vague. Still one question at a time." },
+  { id:"normal", label:"標準", style:"Use realistic, natural English at an intermediate level and respond like a genuinely engaged person in this situation." },
+  { id:"tough", label:"チャレンジ", style:"Use faster, more idiomatic spoken English and realistic follow-up questions. Politely ask for clarification or more detail when answers are vague, while staying appropriate to the role." },
 ];
 
 const ANALYZE_MSGS = ["PDFを読み込んでいます…","研究内容を分析しています…","想定質問を考えています…"];
+const SCENE_EXAMPLES = [
+  "海外のレストランで、店員におすすめを聞いて注文する",
+  "国際学会の休憩時間に、初対面の研究者と雑談する",
+  "ホテルで予約が見つからないことをフロント係に相談する",
+  "英語を話す患者に、検査結果と今後の治療方針をわかりやすく説明する",
+];
 
 // ── state ──
 const S = {
-  stage:"loading",            // loading | key | upload | analyzing | setup | chat | summary | phrasebook
+  stage:"loading",            // loading | key | home | upload | analyzing | setup | chat | summary | phrasebook
   apiKey:"", model:DEFAULT_MODEL,
-  keyDraft:"", modelDraft:"", chatDraft:"",
+  keyDraft:"", modelDraft:"", chatDraft:"", sceneText:"", sceneError:"",
   error:null, fileName:"", pdfB64:null, digest:null,
-  scenario:"qa", difficulty:"normal", showDigest:false,
+  scenario:"custom", difficulty:"normal", showDigest:false, sessionKind:"free",
   persona:"", msgs:[], sending:false, chatError:null, pending:null,
   showFeedback:true, autoSpeak:false,
   hints:null, hintLoading:false, micNote:"",
   summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
-  savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
+  savedPhrases:[], phraseReturnStage:"home", phraseView:"list", phraseNotice:"",
   manualEnglishDraft:"", manualJapaneseDraft:"",
   reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{},
 };
-let recognition = null, listening = false, tickTimer = null, tick = 0;
+let recognition = null, listening = false, tickTimer = null, tick = 0, deferredInstallPrompt = null;
+let lifecycleToken = 0;
+let turnController = null, hintController = null, transcriptController = null, summaryController = null;
 
 const app = document.getElementById("app");
 const $ = (id) => document.getElementById(id);
@@ -147,8 +158,28 @@ function esc(s){
 }
 function setStage(st){ S.stage = st; render(); }
 
+function abortRequest(controller){
+  try{ if (controller) controller.abort(); }catch(e){}
+}
+
+function invalidateConversation(includeSummary){
+  lifecycleToken += 1;
+  abortRequest(turnController); abortRequest(hintController); abortRequest(transcriptController);
+  turnController = null; hintController = null; transcriptController = null;
+  if (includeSummary){ abortRequest(summaryController); summaryController = null; S.summaryLoading = false; }
+  S.sending = false; S.hintLoading = false; transcribing = false;
+  if (listening){
+    try{ if (recognition) recognition.stop(); }catch(e){}
+    setListeningUI(false);
+  }
+  if (recording){ discardRec = true; stopRecording(); }
+  try{ if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); }catch(e){}
+  mediaStream = null;
+  stopSpeaking();
+}
+
 // ── API key (端末内に保存) ──
-const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model";
+const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model", LS_SCENE = "rtt_last_scene", LS_DIFFICULTY = "rtt_difficulty";
 const LS_PHRASES = "rtt_saved_phrases_v1", LS_PHRASES_LEGACY = "rtt_saved_phrases";
 const PHRASE_BACKUP_FORMAT = "eigakkaiwa.phrasebook.backup", PHRASE_BACKUP_VERSION = 1;
 const PHRASE_BACKUP_MAX_BYTES = 20 * 1024 * 1024;
@@ -188,7 +219,7 @@ function safeReviewCount(value){
 function coerceSavedPhrase(raw, index){
   if (typeof raw === "string") raw = { english:raw };
   if (!raw || typeof raw !== "object") return null;
-  const english = normalizePhraseText(raw.english || raw.en);
+  const english = normalizePhraseText(raw.english || raw.en).slice(0, PHRASE_BACKUP_MAX_TEXT);
   if (!english) return null;
   const createdAt = safeSavedDate(raw.createdAt || raw.addedAt, new Date().toISOString());
   const reviewCount = safeReviewCount(raw.reviewCount);
@@ -196,10 +227,10 @@ function coerceSavedPhrase(raw, index){
   return {
     id:(rawId && rawId.length <= 200) ? rawId : ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
     english: english,
-    japanese: normalizePhraseText(raw.japanese || raw.ja),
+    japanese: normalizePhraseText(raw.japanese || raw.ja).slice(0, PHRASE_BACKUP_MAX_TEXT),
     createdAt: createdAt,
     sourceTitle: normalizePhraseText(raw.sourceTitle).slice(0, 800),
-    scenario: normalizePhraseText(raw.scenario).slice(0, 80),
+    scenario: normalizePhraseText(raw.scenario).slice(0, 2000),
     reviewCount:reviewCount,
     correctCount:Math.min(reviewCount, safeReviewCount(raw.correctCount)),
     lastReviewedAt:safeSavedDate(raw.lastReviewedAt, null),
@@ -290,7 +321,7 @@ function savePhraseToBook(phrase, source){
 }
 
 function saveSummaryPhrases(phrases){
-  const source = { sourceTitle:S.digest && S.digest.title, scenario:S.scenario };
+  const source = { sourceTitle:S.digest && S.digest.title, scenario:S.sessionKind === "free" ? S.sceneText : S.scenario };
   const additions = [], updated = S.savedPhrases.slice();
   const byKey = new Map(), pendingKeys = new Set();
   updated.forEach((p, i) => { byKey.set(phraseFingerprint(p.english), i); });
@@ -380,11 +411,17 @@ async function exportPhraseBackup(){
 
     if (typeof File !== "undefined" && navigator.share && navigator.canShare){
       try{
-        const file = new File([blob], fileName, { type:"application/json" });
-        if (navigator.canShare({ files:[file] })){
+        const candidates = [
+          new File([blob], fileName, { type:"application/json" }),
+          new File([json], fileName + ".txt", { type:"text/plain" }),
+        ];
+        const file = candidates.find(candidate => {
+          try{ return navigator.canShare({ files:[candidate] }); }catch(e){ return false; }
+        });
+        if (file){
           await navigator.share({
             files:[file],
-            title:"研究英会話・使える表現帳",
+            title:"Gemini英会話・使える表現帳",
             text:"使える表現と復習履歴のバックアップです。",
           });
           S.phraseNotice = "バックアップを共有先へ保存しました。";
@@ -438,6 +475,7 @@ function readBackupFileText(file){
 
 function parsePhraseBackup(text){
   if (typeof text !== "string" || text.length > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
+  text = text.replace(/^\uFEFF/, "");
   let parsed;
   try{ parsed = JSON.parse(text); }catch(e){ throw new Error("invalid_backup"); }
   let source = null;
@@ -549,8 +587,10 @@ async function importPhraseBackupFile(file){
 }
 
 function phraseBookButton(dark, compact){
+  const busy = (S.stage === "chat" && (S.sending || S.hintLoading || recording || transcribing || listening))
+    || (S.stage === "summary" && S.summaryLoading);
   return '<button id="phraseBookBtn" class="book-link' + (dark ? ' dark' : '')
-    + '" aria-label="保存した表現を開く">📚 ' + (compact ? '' : '表現帳 ') + '<span id="phraseBookCount">' + S.savedPhrases.length + '</span></button>';
+    + '" aria-label="保存した表現を開く"' + (busy ? ' disabled' : '') + '>📚 ' + (compact ? '' : '表現帳 ') + '<span id="phraseBookCount">' + S.savedPhrases.length + '</span></button>';
 }
 
 function bindPhraseBookButton(){
@@ -577,8 +617,11 @@ function refreshPhraseBookBadges(){
 }
 
 function openPhraseBook(){
-  if (S.stage === "chat" && (recording || transcribing || listening)){
-    showMicNote("録音・文字起こしが完了してから表現帳を開いてください。");
+  if (S.stage === "chat" && (S.sending || S.hintLoading || recording || transcribing || listening)){
+    showMicNote("処理が完了してから表現帳を開いてください。");
+    return;
+  }
+  if (S.stage === "summary" && S.summaryLoading){
     return;
   }
   try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
@@ -588,9 +631,9 @@ function openPhraseBook(){
 }
 
 function closePhraseBook(){
-  const allowed = ["key","upload","setup","chat","summary"];
+  const allowed = ["key","home","upload","setup","chat","summary"];
   const target = allowed.indexOf(S.phraseReturnStage) !== -1
-    ? S.phraseReturnStage : (S.apiKey ? "upload" : "key");
+    ? S.phraseReturnStage : (S.apiKey ? "home" : "key");
   setStage(target);
 }
 
@@ -599,14 +642,22 @@ function boot(){
   try{
     const k = localStorage.getItem(LS_KEY);
     const m = localStorage.getItem(LS_MODEL);
-    if (k){ S.apiKey = k; if (m) S.model = m; setStage("upload"); return; }
+    const scene = localStorage.getItem(LS_SCENE);
+    const difficulty = localStorage.getItem(LS_DIFFICULTY);
+    if (scene) S.sceneText = scene;
+    if (DIFFS.some(d => d.id === difficulty)) S.difficulty = difficulty;
+    if (k){ S.apiKey = k; if (m) S.model = m; setStage("home"); return; }
   }catch(e){}
   setStage("key");
 }
 
+function normalizeModelName(value){
+  return String(value || "").trim().replace(/^models\//, "") || DEFAULT_MODEL;
+}
+
 function applyKey(){
   const k = ($("keyPaste") ? $("keyPaste").value : "").trim();
-  const m = (($("modelInput") ? $("modelInput").value : "").trim()) || DEFAULT_MODEL;
+  const m = normalizeModelName($("modelInput") ? $("modelInput").value : "");
   S.keyDraft = k; S.modelDraft = m;
   if (!/^[\x21-\x7E]{8,}$/.test(k)){
     S.error = "APIキーの形式が正しくありません（半角8文字以上・スペースなし）。";
@@ -614,7 +665,7 @@ function applyKey(){
   }
   S.apiKey = k; S.model = m; S.keyDraft = ""; S.modelDraft = ""; S.error = null;
   try{ localStorage.setItem(LS_KEY, k); localStorage.setItem(LS_MODEL, m); }catch(e){}
-  setStage("upload");
+  setStage("home");
 }
 
 function clearKey(){
@@ -626,29 +677,31 @@ function clearKey(){
 // ── Gemini API ──
 async function callGemini(contents, opts){
   opts = opts || {};
+  const modelName = normalizeModelName(opts.model || S.model);
   const url = "https://generativelanguage.googleapis.com/v1beta/models/"
-    + encodeURIComponent(S.model) + ":generateContent?key=" + encodeURIComponent(S.apiKey);
+    + encodeURIComponent(modelName) + ":generateContent";
   const body = {
     contents: contents,
     generationConfig: {
       maxOutputTokens: 8192,
-      temperature: opts.temperature == null ? 0.8 : opts.temperature,
       responseMimeType: "application/json",
     },
   };
+  if (!/^gemini-3\.[67]/i.test(modelName)) body.generationConfig.temperature = opts.temperature == null ? 0.8 : opts.temperature;
   if (opts.schema) body.generationConfig.responseSchema = opts.schema;
   // gemini-2.5-flash系は内部思考トークンが出力上限を食い潰し空応答になることがあるため無効化
-  if (String(S.model).indexOf("2.5-flash") !== -1) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  if (modelName.indexOf("2.5-flash") !== -1) body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
   const res = await fetch(url, {
-    method:"POST", headers:{ "Content-Type":"application/json" },
+    method:"POST", headers:{ "Content-Type":"application/json", "x-goog-api-key":S.apiKey },
     body: JSON.stringify(body),
+    signal:opts.signal,
   });
   let data = null;
   try{ data = await res.json(); }catch(e){}
   if (!res.ok || (data && data.error)){
     const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
-    if (/api key/i.test(msg)) throw new Error("APIキーが無効です。gemini_api_key.txt の内容を確認してください。");
-    if (/not found|is not supported/i.test(msg)) throw new Error("モデル「" + S.model + "」が見つかりません。txtファイルの model= 行を確認してください。");
+    if (/api key|unauthenticated|permission/i.test(msg)) throw new Error("APIキーが無効、またはこのモデルを利用できません。設定をご確認ください。");
+    if (/not found|is not supported/i.test(msg)) throw new Error("モデル「" + modelName + "」が見つからないか、この処理に対応していません。");
     if (/quota|rate/i.test(msg)) throw new Error("APIの利用上限に達しました。しばらく待ってからお試しください。");
     throw new Error(msg);
   }
@@ -746,6 +799,30 @@ function readFileB64(file){
   });
 }
 
+async function recordedAudioToWav(blob){
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) throw new Error("音声変換に対応していません");
+  const ctx = new AudioCtx();
+  let decoded;
+  try{ decoded = await ctx.decodeAudioData(await blob.arrayBuffer()); }
+  finally{ try{ await ctx.close(); }catch(e){} }
+  const targetRate = 16000;
+  const frames = Math.max(1, Math.ceil(decoded.duration * targetRate));
+  const pcmBytes = new Uint8Array(frames * 2), pcmView = new DataView(pcmBytes.buffer);
+  const ratio = decoded.sampleRate / targetRate;
+  const channels = [];
+  for (let c = 0; c < decoded.numberOfChannels; c++) channels.push(decoded.getChannelData(c));
+  for (let i = 0; i < frames; i++){
+    const pos = i * ratio, left = Math.min(Math.floor(pos), decoded.length - 1);
+    const right = Math.min(left + 1, decoded.length - 1), mix = pos - left;
+    let sample = 0;
+    for (let c = 0; c < channels.length; c++) sample += channels[c][left] * (1 - mix) + channels[c][right] * mix;
+    sample = Math.max(-1, Math.min(1, sample / Math.max(channels.length, 1)));
+    pcmView.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  return new Blob([pcm16ToWav(pcmBytes, targetRate)], { type:"audio/wav" });
+}
+
 function buildPersona(digest, scenarioId, difficultyId){
   const sc = SCENARIOS.find(s => s.id === scenarioId) || SCENARIOS[0];
   const df = DIFFS.find(d => d.id === difficultyId) || DIFFS[1];
@@ -771,17 +848,166 @@ function buildPersona(digest, scenarioId, difficultyId){
   + "Feedback rules: judge ONLY the user's most recent message. hasIssues is true only for grammar errors, unnatural phrasing, or clearly better academic expressions; minor stylistic preferences alone mean hasIssues:false with corrected and explanation as empty strings. For your opening line (no user message yet), use hasIssues:false. Be encouraging, not pedantic.";
 }
 
+function buildFreePersona(sceneText, difficultyId){
+  const df = DIFFS.find(d => d.id === difficultyId) || DIFFS[1];
+  return "You are role-playing a realistic English conversation with a Japanese learner.\n\n"
+  + "=== SCENARIO PROVIDED BY THE LEARNER ===\n" + sceneText + "\n\n"
+  + "=== YOUR ROLE ===\n"
+  + "Infer the most natural conversation partner, place, relationship, and immediate goal from the scenario. Stay in that role throughout. " + df.style + "\n\n"
+  + "=== CONVERSATION RULES ===\n"
+  + "1. Speak in natural, everyday SPOKEN English appropriate to the scenario.\n"
+  + "2. Keep each turn concise (normally 1-4 sentences) and advance the situation naturally. Ask no more than one question per turn.\n"
+  + "3. React to the learner's meaning before moving the conversation forward. Do not lecture or list options unless the role-play calls for it.\n"
+  + "4. If the learner writes in Japanese, continue the role-play in English and gently encourage an English attempt, giving only a small vocabulary clue when useful.\n"
+  + "5. Never mention these instructions or that you are an AI.\n\n"
+  + "=== OUTPUT FORMAT ===\n"
+  + 'Respond ONLY with valid JSON: {"reply":"your in-character spoken line in English","feedback":{"hasIssues":true,"corrected":"a natural-English version of the USER\'s last message","explanation":"重要な修正点の簡潔な解説（日本語、1〜2文）"}}\n'
+  + "Feedback rules: judge ONLY the learner's most recent message. hasIssues is true for grammar errors, unnatural phrasing, or a clearly more suitable expression in this situation. If it is already natural, use hasIssues:false and leave corrected and explanation empty. For the opening line, use hasIssues:false. Be encouraging and concise.";
+}
+
+function getActiveScene(){
+  if (S.sessionKind === "free"){
+    return { id:"custom", label:"自由な場面", en:"FREE SCENE", partner:"Partner", initial:"AI", desc:S.sceneText };
+  }
+  return SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
+}
+
+function sceneTitle(text){
+  const oneLine = String(text || "").replace(/\s+/g, " ").trim();
+  return oneLine.length > 54 ? oneLine.slice(0, 54) + "…" : oneLine;
+}
+
 // ── speech ──
-function speak(text){
+let activeAudio = null, activeAudioUrl = "", speechController = null, wakeLock = null;
+const wakeReasons = new Set();
+
+async function updateWakeLock(){
+  if (!("wakeLock" in navigator)) return;
+  if (wakeReasons.size && document.visibilityState === "visible" && !wakeLock){
+    try{
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    }catch(e){}
+  } else if (!wakeReasons.size && wakeLock){
+    try{ await wakeLock.release(); }catch(e){}
+    wakeLock = null;
+  }
+}
+
+function holdWakeLock(reason, on){
+  if (on) wakeReasons.add(reason); else wakeReasons.delete(reason);
+  updateWakeLock();
+}
+
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") updateWakeLock(); });
+
+function bytesFromBase64(value){
+  const raw = atob(String(value || "").replace(/^data:[^,]+,/, ""));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function pcm16ToWav(bytes, sampleRate){
+  const dataLength = bytes.length - (bytes.length % 2);
+  const out = new ArrayBuffer(44 + dataLength), view = new DataView(out);
+  const write = (offset, text) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); };
+  write(0, "RIFF"); view.setUint32(4, 36 + dataLength, true); write(8, "WAVE"); write(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, dataLength, true);
+  new Uint8Array(out, 44).set(bytes.subarray(0, dataLength));
+  return out;
+}
+
+function findAudioPart(value){
+  if (!value || typeof value !== "object") return null;
+  if (value.type === "audio" && typeof value.data === "string") return value;
+  const priority = ["steps","outputs","output","content","parts"];
+  for (const key of priority){
+    const child = value[key];
+    if (Array.isArray(child)){
+      for (let i = child.length - 1; i >= 0; i--){ const found = findAudioPart(child[i]); if (found) return found; }
+    } else if (child && typeof child === "object"){
+      const found = findAudioPart(child); if (found) return found;
+    }
+  }
+  return null;
+}
+
+async function geminiSpeechBlob(text, signal){
+  let part = null, lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++){
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "x-goog-api-key":S.apiKey },
+      signal:signal,
+      body:JSON.stringify({
+        model:TTS_MODEL,
+        input:"Speak in warm, natural conversational English. Read only the text after TRANSCRIPT.\n\nTRANSCRIPT:\n" + text,
+        response_format:{ type:"audio" },
+        generation_config:{ speech_config:[{ voice:"Achird" }] },
+        store:false,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && (part = findAudioPart(data))) break;
+    lastError = new Error((data && data.error && data.error.message) || ("HTTP " + res.status));
+    if (attempt === 0 && res.status >= 500) await new Promise(resolve => setTimeout(resolve, 450));
+    else break;
+  }
+  if (!part) throw lastError || new Error("音声データがありません");
+  const bytes = bytesFromBase64(part.data);
+  const mime = String(part.mime_type || part.mimeType || "audio/l16").toLowerCase();
+  if (/wav/.test(mime) || (bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70)){
+    return new Blob([bytes], { type:"audio/wav" });
+  }
+  const rateMatch = mime.match(/rate[=:_-]?(\d+)/);
+  const sampleRate = Number(part.sample_rate || part.sampleRate || (rateMatch && rateMatch[1]) || 24000);
+  return new Blob([pcm16ToWav(bytes, sampleRate)], { type:"audio/wav" });
+}
+
+function deviceSpeak(text){
   try{
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US"; u.rate = 0.95;
-    const v = window.speechSynthesis.getVoices().find(vo => vo.lang && vo.lang.indexOf("en") === 0);
+    const voices = window.speechSynthesis.getVoices().filter(v => /^en(?:-|_)/i.test(v.lang || ""));
+    const v = voices.find(v => /google|natural|neural|premium/i.test(v.name || "")) || voices.find(v => /^en-US/i.test(v.lang || "")) || voices[0];
     if (v) u.voice = v;
-    window.speechSynthesis.speak(u);
-  }catch(e){}
+    u.onend = u.onerror = () => holdWakeLock("speech", false);
+    holdWakeLock("speech", true); window.speechSynthesis.speak(u);
+  }catch(e){ holdWakeLock("speech", false); }
+}
+
+function stopSpeaking(){
+  abortRequest(speechController); speechController = null;
+  try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  try{ if (activeAudio){ activeAudio.pause(); activeAudio.src = ""; } }catch(e){}
+  activeAudio = null;
+  if (activeAudioUrl){ URL.revokeObjectURL(activeAudioUrl); activeAudioUrl = ""; }
+  holdWakeLock("speech", false);
+}
+
+async function speak(text){
+  text = String(text || "").trim();
+  if (!text) return;
+  stopSpeaking();
+  speechController = new AbortController();
+  const controller = speechController;
+  holdWakeLock("speech", true);
+  try{
+    const blob = await geminiSpeechBlob(text, controller.signal);
+    if (controller !== speechController) return;
+    activeAudioUrl = URL.createObjectURL(blob);
+    activeAudio = new Audio(activeAudioUrl);
+    activeAudio.onended = activeAudio.onerror = () => stopSpeaking();
+    await activeAudio.play();
+  }catch(e){
+    if (e && e.name === "AbortError") return;
+    if (controller === speechController){ speechController = null; deviceSpeak(text); }
+  }
 }
 
 function setListeningUI(on){
@@ -849,9 +1075,15 @@ function updateRecUI(){
 async function toggleRecording(){
   if (transcribing) return;
   if (recording){ stopRecording(); return; }
-  if (!(navigator.mediaDevices && window.MediaRecorder)){ toggleListening(); return; } // 旧方式にフォールバック
+  if (!(navigator.mediaDevices && window.MediaRecorder)){
+    showMicNote("このブラウザは録音入力に対応していません。最新版のChromeをご利用ください。");
+    return;
+  }
   try{
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ channelCount:{ ideal:1 }, echoCancellation:{ ideal:true }, noiseSuppression:{ ideal:true }, autoGainControl:{ ideal:true } },
+      video:false,
+    });
   }catch(e){
     showMicNote("マイクを使用できませんでした。ブラウザのマイク許可設定を確認してください。");
     return;
@@ -868,25 +1100,27 @@ async function toggleRecording(){
   }
   mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
   mediaRec.onstop = onRecStopped;
-  mediaRec.start();
+  mediaRec.start(1000);
   recording = true; recStart = Date.now();
+  holdWakeLock("recording", true);
   showMicNote("");
   updateRecUI();
   recTimer = setInterval(() => {
     updateRecUI();
-    if (Date.now() - recStart > 120000) stopRecording(); // 2分で自動停止
   }, 500);
 }
 
 function stopRecording(){
   if (recTimer){ clearInterval(recTimer); recTimer = null; }
   recording = false;
+  holdWakeLock("recording", false);
   try{ if (mediaRec && mediaRec.state !== "inactive") mediaRec.stop(); }catch(e){}
   updateRecUI();
 }
 
 async function onRecStopped(){
   try{ if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); }catch(e){}
+  mediaStream = null;
   if (discardRec || S.stage !== "chat"){ discardRec = false; return; }
   const blob = new Blob(recChunks, { type: (mediaRec && mediaRec.mimeType) || "audio/webm" });
   if (blob.size < 1500){
@@ -895,17 +1129,24 @@ async function onRecStopped(){
     return;
   }
   transcribing = true; updateRecUI();
+  const token = lifecycleToken;
+  abortRequest(transcriptController);
+  const controller = new AbortController(); transcriptController = controller;
   try{
-    const b64 = await readFileB64(blob);
-    const prompt = "This audio is a Japanese researcher practicing spoken English. A Japanese accent, a slow pace, long pauses, and fillers are all expected and normal.\n"
-      + "Transcribe their English speech faithfully. Remove filler sounds (um, ah, e-to) but do NOT correct grammar mistakes - keep exactly what they said. If a word is unclear, write your best guess from the context of someone describing academic research.\n"
+    const wav = await recordedAudioToWav(blob);
+    if (wav.size > 14 * 1024 * 1024) throw new Error("録音データが大きすぎます。短く区切ってください");
+    const b64 = await readFileB64(wav);
+    const prompt = "This audio is a Japanese learner practicing spoken English. A Japanese accent, a slow pace, long pauses, and fillers are all expected and normal.\n"
+      + "Conversation scenario: " + String(S.digest && S.digest.summary || S.sceneText).slice(0, 700) + "\n"
+      + "Transcribe their English speech faithfully. Remove filler sounds (um, ah, e-to) but do NOT correct grammar mistakes - keep exactly what they said. If a word is unclear, make the best context-aware guess.\n"
       + 'Respond ONLY with valid JSON: {"transcript":"what they said in English"}';
     const out = await callGemini([
       { role:"user", parts:[
-        { inline_data:{ mime_type: blob.type.split(";")[0] || "audio/webm", data: b64 } },
+        { inline_data:{ mime_type:"audio/wav", data:b64 } },
         { text: prompt },
       ]},
-    ], { temperature: 0.2, schema: SCHEMA_TRANSCRIPT });
+    ], { temperature:0.2, schema:SCHEMA_TRANSCRIPT, signal:controller.signal });
+    if (token !== lifecycleToken || S.stage !== "chat") return;
     const parsed = parseModelJSON(out);
     const t = String(parsed.transcript || "").trim();
     const ta = $("chatInput");
@@ -916,9 +1157,10 @@ async function onRecStopped(){
       showMicNote("音声を聞き取れませんでした。マイクに近づいて、もう一度お試しください。");
     }
   }catch(e){
-    showMicNote("文字起こしに失敗しました" + (e && e.message ? "（" + e.message + "）" : "") + "。もう一度お試しください。");
+    if (!(e && e.name === "AbortError")) showMicNote("文字起こしに失敗しました" + (e && e.message ? "（" + e.message + "）" : "") + "。もう一度お試しください。");
   }finally{
-    transcribing = false; updateRecUI();
+    if (transcriptController === controller) transcriptController = null;
+    if (token === lifecycleToken){ transcribing = false; updateRecUI(); }
   }
 }
 
@@ -928,7 +1170,7 @@ async function handleFile(file){
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
   if (!isPdf){ S.error = "PDFファイルをアップロードしてください。"; render(); return; }
   if (file.size > 15 * 1024 * 1024){ S.error = "ファイルが大きすぎます。15MB以下のPDFをご利用ください。"; render(); return; }
-  S.error = null; S.fileName = file.name;
+  S.error = null; S.fileName = file.name; S.sessionKind = "research"; S.scenario = "qa";
   setStage("analyzing");
   try{
     S.pdfB64 = await readFileB64(file);
@@ -965,7 +1207,8 @@ function historyToContents(history){
   const contents = [
     { role:"user", parts:[{ text: S.persona + "\n\nBegin the conversation now with your opening line." }] },
   ];
-  for (const m of history){
+  const recentHistory = history.length > 40 ? history.slice(-40) : history;
+  for (const m of recentHistory){
     if (m.role === "ai"){
       contents.push({ role:"model", parts:[{ text: JSON.stringify({
         reply: m.text,
@@ -979,26 +1222,60 @@ function historyToContents(history){
 }
 
 async function runTurn(history){
-  S.sending = true; S.chatError = null;
+  abortRequest(turnController);
+  const controller = new AbortController(), token = lifecycleToken;
+  turnController = controller;
+  S.msgs = history; S.sending = true; S.chatError = null; S.pending = null;
   renderMsgs();
   try{
-    const out = await callGemini(historyToContents(history), { temperature:0.9, schema: SCHEMA_CHAT });
+    const out = await callGemini(historyToContents(history), { temperature:0.9, schema:SCHEMA_CHAT, signal:controller.signal });
+    if (token !== lifecycleToken || S.stage !== "chat") return;
     let parsed;
     try{ parsed = parseModelJSON(out); }
     catch(e){ parsed = looseChatParse(out); }
     S.msgs = history.concat([{ role:"ai", text: parsed.reply || "…", feedback: parsed.feedback || null }]);
     if (S.autoSpeak) speak(parsed.reply || "");
   }catch(e){
+    if ((e && e.name === "AbortError") || token !== lifecycleToken || S.stage !== "chat") return;
     S.pending = history; S.msgs = history;
     S.chatError = "エラー: " + (e && e.message ? e.message : "通信に失敗しました。");
   }finally{
-    S.sending = false; renderMsgs();
+    if (turnController === controller) turnController = null;
+    if (token === lifecycleToken && S.stage === "chat"){ S.sending = false; renderMsgs(); }
   }
 }
 
 function startChat(){
+  invalidateConversation(true);
+  S.sessionKind = "research";
   S.persona = buildPersona(S.digest, S.scenario, S.difficulty);
   S.msgs = []; S.hints = null; S.chatError = null; S.summary = null; S.chatDraft = "";
+  setStage("chat");
+  runTurn([]);
+}
+
+function startFreeChat(){
+  const input = $("sceneInput");
+  const scene = String(input ? input.value : S.sceneText).trim();
+  S.sceneText = scene;
+  if (scene.length < 4){
+    S.sceneError = "会話したい場面を、もう少し具体的に入力してください。";
+    renderHome();
+    const next = $("sceneInput"); if (next) next.focus();
+    return;
+  }
+  invalidateConversation(true);
+  S.sceneError = ""; S.sessionKind = "free"; S.scenario = "custom";
+  S.digest = {
+    title:sceneTitle(scene), field:"自由英会話", docType:"scene", summary:scene,
+    keyTerms:[], sampleQuestions:[],
+  };
+  S.persona = buildFreePersona(scene, S.difficulty);
+  S.msgs = []; S.hints = null; S.chatError = null; S.summary = null; S.chatDraft = "";
+  try{
+    localStorage.setItem(LS_SCENE, scene);
+    localStorage.setItem(LS_DIFFICULTY, S.difficulty);
+  }catch(e){}
   setStage("chat");
   runTurn([]);
 }
@@ -1016,20 +1293,27 @@ async function getHints(){
   if (S.hintLoading || S.sending) return;
   const lastAI = S.msgs.slice().reverse().find(m => m.role === "ai");
   if (!lastAI) return;
+  abortRequest(hintController);
+  const controller = new AbortController(), token = lifecycleToken;
+  hintController = controller;
   S.hintLoading = true; S.hints = null; renderMsgs();
   try{
     const recent = S.msgs.slice(-4).map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
-    const prompt = "A Japanese researcher is practicing English conversation about their own research.\n"
-      + "Research summary: " + String(S.digest.summary).slice(0, 800) + "\n"
+    const prompt = "A Japanese learner is practicing spoken English in this scenario:\n"
+      + String(S.digest && S.digest.summary || S.sceneText).slice(0, 1000) + "\n"
       + "Recent exchange:\n" + recent + "\n"
       + 'The conversation partner just said: "' + lastAI.text + '"\n'
-      + "Give 2 distinct example responses the researcher could say next, at an intermediate English level, each 1-2 sentences.\n"
+      + "Give 2 distinct example responses the learner could say next, at an intermediate English level, each 1-2 sentences and suitable for this exact situation.\n"
       + 'Respond ONLY with valid JSON: {"hints":[{"english":"...","japanese":"自然な日本語訳"},{"english":"...","japanese":"..."}]}';
-    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.7, schema: SCHEMA_HINTS });
+    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.7, schema:SCHEMA_HINTS, signal:controller.signal });
+    if (token !== lifecycleToken || S.stage !== "chat") return;
     const parsed = parseModelJSON(out);
     S.hints = parsed.hints || [];
-  }catch(e){ S.hints = []; }
-  finally{ S.hintLoading = false; renderMsgs(); }
+  }catch(e){ if (!(e && e.name === "AbortError") && token === lifecycleToken) S.hints = []; }
+  finally{
+    if (hintController === controller) hintController = null;
+    if (token === lifecycleToken && S.stage === "chat"){ S.hintLoading = false; renderMsgs(); }
+  }
 }
 
 // ── summary ──
@@ -1093,11 +1377,14 @@ function sanitizeSummary(sm){
 }
 
 async function genSummary(){
+  abortRequest(summaryController);
+  const controller = new AbortController(), token = lifecycleToken;
+  summaryController = controller;
   S.summary = null; S.summaryError = false; S.summaryErrorMsg = ""; S.summaryLoading = true; S.phraseNotice = ""; render();
   let bestSummary = null;
   try{
-    const transcript = S.msgs.map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
-    const prompt = "以下は日本人研究者の英会話練習の記録です（Partner=会話相手、Learner=練習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
+    const transcript = S.msgs.map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n").slice(-30000);
+    const prompt = "以下は日本人学習者の英会話練習の記録です。場面は「" + String(S.digest && S.digest.summary || S.sceneText).slice(0, 600) + "」です（Partner=会話相手、Learner=学習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
       + transcript + "\n---\n"
       + 'Respond ONLY with valid JSON with these fields: overall（総評、日本語2〜3文、励ましを含む）, strengths（良かった点の配列、日本語で2〜3個）, improvements（具体的な改善ポイントの配列、日本語で2〜3個）, phrases（この場面で使える英語表現の配列、各要素は english と japanese を持つオブジェクト、3〜4個）.\n'
       + '重要: strengths・improvements・phrases は必ず別々の配列に分けること。キー名（improvements, phrases, english, japanese 等）やテンプレート文を配列の要素として出力しないこと。';
@@ -1105,7 +1392,8 @@ async function genSummary(){
       const retryNote = attempt
         ? "\n前回は一部の配列が欠けていました。4つの必須フィールドをすべて埋め、improvementsを2〜3個、phrasesを3〜4個必ず返してください。"
         : "";
-      const out = await callGemini([{ role:"user", parts:[{ text: prompt + retryNote }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
+      const out = await callGemini([{ role:"user", parts:[{ text: prompt + retryNote }] }], { temperature:0.5, schema:SCHEMA_SUMMARY, signal:controller.signal });
+      if (token !== lifecycleToken || S.stage !== "summary") return;
       let candidate = null;
       try{ candidate = sanitizeSummary(parseModelJSON(out)); }catch(e){ if (attempt === 1) throw e; }
       if (!candidate) continue;
@@ -1125,24 +1413,37 @@ async function genSummary(){
     S.summary = bestSummary;
     throw new Error("改善ポイントまたは使える表現を取得できませんでした");
   }catch(e){
+    if ((e && e.name === "AbortError") || token !== lifecycleToken || S.stage !== "summary") return;
     if (!S.summary && bestSummary) S.summary = bestSummary;
     S.summaryError = true; S.summaryErrorMsg = (e && e.message) ? e.message : "";
   }
-  finally{ S.summaryLoading = false; render(); }
+  finally{
+    if (summaryController === controller) summaryController = null;
+    if (token === lifecycleToken && S.stage === "summary"){ S.summaryLoading = false; render(); }
+  }
 }
 
 function endSession(){
-  try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-  if (recording){ discardRec = true; stopRecording(); }
+  invalidateConversation(false);
   const userTurns = S.msgs.filter(m => m.role === "user").length;
-  if (userTurns === 0){ S.msgs = []; setStage("setup"); return; }
+  if (userTurns === 0){ S.msgs = []; setStage(S.sessionKind === "free" ? "home" : "setup"); return; }
   setStage("summary");
   genSummary();
 }
 
 function resetAll(){
+  invalidateConversation(true);
   S.error = null; S.fileName = ""; S.pdfB64 = null; S.digest = null;
   S.msgs = []; S.hints = null; S.summary = null; S.chatError = null; S.showDigest = false; S.chatDraft = "";
+  S.sessionKind = "free"; S.scenario = "custom";
+  setStage("home");
+}
+
+function resetResearch(){
+  invalidateConversation(true);
+  S.error = null; S.fileName = ""; S.pdfB64 = null; S.digest = null;
+  S.msgs = []; S.hints = null; S.summary = null; S.chatError = null; S.showDigest = false; S.chatDraft = "";
+  S.sessionKind = "research"; S.scenario = "qa";
   setStage("upload");
 }
 
@@ -1153,6 +1454,7 @@ function render(){
   switch (S.stage){
     case "loading":   app.innerHTML = '<div style="padding:60px;text-align:center;color:var(--sub);font-size:13px">起動中…</div>'; break;
     case "key":       renderKey(); break;
+    case "home":      renderHome(); break;
     case "upload":    renderUpload(); break;
     case "analyzing": renderAnalyzing(); break;
     case "setup":     renderSetup(); break;
@@ -1169,8 +1471,8 @@ function renderKey(){
     +   '<div class="mono eyebrow red">SETUP ─ GEMINI API</div>' + phraseBookButton(false, false) + '</div>'
     + '<h1 class="display" style="font-size:26px;color:var(--navy-deep);margin-top:10px;line-height:1.4">APIキーを設定</h1>'
     + '<p style="font-size:13px;color:var(--sub);line-height:1.8;margin-top:14px">'
-    + 'Gemini APIキーは <b style="color:var(--ink)">Google AI Studio</b>（aistudio.google.com/apikey）で無料で取得できます。'
-    + '入力したキーは<b>この端末のブラウザ内にのみ保存</b>され、Googleとの通信以外には使われません。</p>'
+    + 'Gemini APIキーは <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style="color:var(--navy);font-weight:700">Google AI Studio</a> で取得できます。2026年9月以降も使える、新しいAuth keyをご利用ください。'
+    + '入力したキーは<b>この端末のブラウザ内にのみ保存</b>され、Googleとの通信以外には使いません。</p>'
     + '<div class="card" style="margin-top:20px;padding:18px">'
     +   '<div style="font-size:13px;font-weight:700">APIキー</div>'
     +   '<input id="keyPaste" type="password" value="' + esc(S.keyDraft) + '" placeholder="APIキーを貼り付け" autocomplete="off" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
@@ -1188,6 +1490,77 @@ function renderKey(){
   bindPhraseBookButton();
 }
 
+function isStandalone(){
+  return !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+}
+
+async function installApp(){
+  if (deferredInstallPrompt){
+    const prompt = deferredInstallPrompt; deferredInstallPrompt = null;
+    try{ await prompt.prompt(); await prompt.userChoice; }catch(e){}
+    renderHome(); return;
+  }
+  S.sceneError = "Android版Chromeでは、右上の︙メニューから「ホーム画面に追加」または「アプリをインストール」を選べます。";
+  renderHome();
+}
+
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault(); deferredInstallPrompt = e;
+  if (S.stage === "home") renderHome();
+});
+window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; if (S.stage === "home") renderHome(); });
+
+// ── free scene home ──
+function renderHome(){
+  let examples = "";
+  SCENE_EXAMPLES.forEach((text, i) => {
+    examples += '<button class="scene-example" data-example="' + i + '">' + esc(text) + '</button>';
+  });
+  let diffBtns = "";
+  DIFFS.forEach(df => {
+    diffBtns += '<button class="diff-btn' + (S.difficulty === df.id ? " on" : "") + '" data-home-diff="' + df.id + '">' + df.label + '</button>';
+  });
+  app.innerHTML = '<div class="wrap safe-bottom" style="padding-top:34px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +   '<div class="mono eyebrow red">GEMINI ENGLISH TRAINER</div>' + phraseBookButton(false, false) + '</div>'
+    + '<h1 class="display" style="font-size:31px;font-weight:700;color:var(--navy-deep);margin-top:14px;line-height:1.35">話したい場面を決めて、<br>英語で会話する。</h1>'
+    + '<p style="font-size:13px;color:var(--sub);line-height:1.9;margin-top:14px">日本語でも英語でも、練習したい状況を自由に入力してください。Geminiがその場面の相手役になり、自然な会話を始めます。</p>'
+    + '<div class="card" style="margin-top:24px;padding:18px">'
+    +   '<label for="sceneInput" class="mono eyebrow" style="display:block;color:var(--navy)">SCENE ─ 会話の場面</label>'
+    +   '<textarea id="sceneInput" rows="5" maxlength="2000" placeholder="例：海外のホテルで、予約が見つからないことをフロント係に相談したい" style="margin-top:10px;width:100%;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:16px;line-height:1.7;background:var(--bg);outline:none;color:var(--ink)">' + esc(S.sceneText) + '</textarea>'
+    +   '<div class="mono eyebrow" style="margin-top:16px">EXAMPLES ─ 入力例</div>'
+    +   '<div style="display:grid;gap:7px;margin-top:8px">' + examples + '</div>'
+    +   '<div class="mono eyebrow" style="margin-top:18px">LEVEL ─ 難易度</div>'
+    +   '<div style="display:flex;gap:8px;margin-top:8px">' + diffBtns + '</div>'
+    +   '<button id="freeStartBtn" class="btn btn-stripe" style="margin-top:20px;padding:15px">この場面で会話をはじめる</button>'
+    + '</div>'
+    + (S.sceneError ? '<div class="' + (/入力|対応/.test(S.sceneError) ? 'errbox' : 'card') + '" style="margin-top:12px;padding:12px 14px;font-size:12px;line-height:1.7">' + esc(S.sceneError) + '</div>' : '')
+    + '<div class="card" style="margin-top:14px;padding:16px">'
+    +   '<div class="mono eyebrow">RESEARCH MODE ─ 研究資料を使う</div>'
+    +   '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">論文や学会ポスターのPDFを読み込ませ、質疑応答やポスター発表も練習できます。</p>'
+    +   '<button id="pdfModeBtn" class="btn btn-ghost" style="margin-top:10px">PDFを使って練習する</button></div>'
+    + (!isStandalone() ? '<button id="installBtn" class="btn btn-ghost" style="margin-top:12px">📱 Androidにアプリとして追加</button>' : '')
+    + '<p style="font-size:11px;color:var(--sub);margin-top:22px;line-height:1.8">モデル: ' + esc(S.model)
+    + ' ─ <button id="reKeyBtn" style="color:var(--navy);text-decoration:underline;font-size:11px">APIキー・モデルを変更</button><br>APIキーは共有ファイルや会話レポートには含まれません。</p>'
+    + '</div>';
+
+  const sceneInput = $("sceneInput");
+  sceneInput.addEventListener("input", e => { S.sceneText = e.target.value; S.sceneError = ""; });
+  sceneInput.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); startFreeChat(); } });
+  document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => {
+    S.sceneText = SCENE_EXAMPLES[Number(b.getAttribute("data-example"))] || "";
+    sceneInput.value = S.sceneText; sceneInput.focus(); S.sceneError = "";
+  }));
+  document.querySelectorAll("[data-home-diff]").forEach(b => b.addEventListener("click", () => {
+    S.sceneText = sceneInput.value; S.difficulty = b.getAttribute("data-home-diff"); renderHome();
+  }));
+  $("freeStartBtn").addEventListener("click", startFreeChat);
+  $("pdfModeBtn").addEventListener("click", () => { S.error = null; setStage("upload"); });
+  $("reKeyBtn").addEventListener("click", clearKey);
+  const install = $("installBtn"); if (install) install.addEventListener("click", installApp);
+  bindPhraseBookButton();
+}
+
 // ── upload ──
 function renderUpload(){
   let scenes = "";
@@ -1198,7 +1571,8 @@ function renderUpload(){
   }
   app.innerHTML = '<div class="wrap" style="padding-top:56px;padding-bottom:40px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
-    +   '<div class="mono eyebrow red">CONFERENCE ENGLISH TRAINER · GEMINI</div>' + phraseBookButton(false, false) + '</div>'
+    +   '<button id="homeBackBtn" class="book-link">← 場面入力へ</button>' + phraseBookButton(false, false) + '</div>'
+    + '<div class="mono eyebrow red" style="margin-top:20px">CONFERENCE ENGLISH TRAINER · GEMINI</div>'
     + '<h1 class="display" style="font-size:32px;font-weight:700;color:var(--navy-deep);margin-top:12px;line-height:1.35">あなたの研究で、<br>英会話を練習する。</h1>'
     + '<p style="font-size:13px;color:var(--sub);line-height:1.9;margin-top:16px">論文や学会ポスターのPDFをアップロードすると、AIがその内容を読み込み、国際学会の質疑応答・ポスターセッション・懇親会を想定した英会話の相手になります。</p>'
     + '<div id="dropZone" style="margin-top:30px;border:2px dashed var(--line);background:var(--paper);border-radius:16px;padding:32px;text-align:center;cursor:pointer">'
@@ -1220,6 +1594,7 @@ function renderUpload(){
   dz.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
   inp.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
   $("reKeyBtn").addEventListener("click", clearKey);
+  $("homeBackBtn").addEventListener("click", () => setStage("home"));
   bindPhraseBookButton();
 }
 
@@ -1234,7 +1609,7 @@ function renderAnalyzing(){
       + '<button id="backBtn" class="btn btn-ghost" style="width:auto;padding:10px 18px;font-size:13px">戻る</button>'
       + '</div></div></div>';
     $("reAnalyzeBtn").addEventListener("click", () => { if (S.pdfB64) analyzePdf(); });
-    $("backBtn").addEventListener("click", resetAll);
+    $("backBtn").addEventListener("click", resetResearch);
     return;
   }
   app.innerHTML = '<div style="display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px">'
@@ -1303,14 +1678,14 @@ function renderSetup(){
   document.querySelectorAll("[data-scene]").forEach(b => b.addEventListener("click", () => { S.scenario = b.getAttribute("data-scene"); render(); }));
   document.querySelectorAll("[data-diff]").forEach(b => b.addEventListener("click", () => { S.difficulty = b.getAttribute("data-diff"); render(); }));
   $("startBtn").addEventListener("click", startChat);
-  $("resetBtn").addEventListener("click", resetAll);
+  $("resetBtn").addEventListener("click", resetResearch);
   bindPhraseBookButton();
 }
 
 // ── chat ──
 function renderChat(){
-  const sc = SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
-  const micOk = !!((navigator.mediaDevices && window.MediaRecorder) || window.SpeechRecognition || window.webkitSpeechRecognition);
+  const sc = getActiveScene();
+  const micOk = !!(navigator.mediaDevices && window.MediaRecorder);
   app.innerHTML = '<div class="chat-root">'
     + '<div class="chat-head"><div style="max-width:600px;margin:0 auto">'
     +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
@@ -1354,7 +1729,7 @@ function renderChat(){
 function renderMsgs(){
   const list = $("msgList");
   if (!list) return;
-  const sc = SCENARIOS.find(s => s.id === S.scenario) || SCENARIOS[0];
+  const sc = getActiveScene();
   let html = "";
   S.msgs.forEach((m, i) => {
     if (m.role === "ai"){
@@ -1475,11 +1850,11 @@ function recordPhraseReview(remembered){
 function phraseBackupCardHtml(){
   return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
     + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押し、共有先から <b style="color:var(--navy)">Google Drive</b> を選べます。読み込み時もDrive上のJSONファイルを選択できます。</p>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押し、共有先から <b style="color:var(--navy)">Google Drive</b> または端末の保存先を選べます。読み込み時もDrive上のJSON/TXTファイルを選択できます。</p>'
     + '<div class="backup-actions">'
     + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存先を選んで保存</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
-    + '<input id="phraseBackupFile" type="file" accept=".json,application/json" hidden>'
+    + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
     + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
     + '</section>';
 }
@@ -1555,7 +1930,7 @@ function renderPhraseBook(){
     +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
     +   '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
     + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
-    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">この端末のブラウザ内に保存されます。APIキーを削除しても表現は残ります。</p>'
+    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">普段はこの端末のブラウザ内に保存されます。下の「保存先を選んで保存」から、スマホ本体やGoogle Driveへバックアップできます。</p>'
     + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
     + backupCard + content + '</div>';
 
@@ -1657,6 +2032,7 @@ function renderSummary(){
   if (!phrases) phrases = '<div class="phrase-empty">' + esc(emptyMessage) + '</div>';
 
   const phraseList = sm.phrases || [];
+  const freeSession = S.sessionKind === "free";
   const allSaved = phraseList.length > 0 && phraseList.every(p => isPhraseSaved(p.english) && !phraseNeedsTranslation(p));
   const body = '<div style="margin-top:14px">'
     + (sm.overall ? '<div class="card" style="padding:16px;font-size:14px;line-height:1.8">' + esc(sm.overall) + '</div>' : '')
@@ -1682,8 +2058,8 @@ function renderSummary(){
     +   '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub)">自然な英語 <b style="color:var(--green)">' + Math.max(userMsgs - issueCount, 0) + '</b> / ' + userMsgs + '</div></div>'
     + status + body
     + '<div style="margin-top:32px">'
-    +   '<button id="againBtn" class="btn btn-navy">⟲ 同じ資料でもう一度練習する</button>'
-    +   '<button id="newPdfBtn" class="btn btn-ghost" style="margin-top:10px">別のPDFで練習する</button></div>'
+    +   '<button id="againBtn" class="btn btn-navy">⟲ ' + (freeSession ? '同じ場面でもう一度練習する' : '同じ資料でもう一度練習する') + '</button>'
+    +   '<button id="newSessionBtn" class="btn btn-ghost" style="margin-top:10px">' + (freeSession ? '別の場面で練習する' : '別のPDFで練習する') + '</button></div>'
     + '</div>';
 
   const rs = $("reSummaryBtn"); if (rs) rs.addEventListener("click", genSummary);
@@ -1693,19 +2069,25 @@ function renderSummary(){
   }));
   document.querySelectorAll(".phraseSave").forEach(b => b.addEventListener("click", () => {
     const p = S.summary && S.summary.phrases && S.summary.phrases[Number(b.getAttribute("data-p"))];
-    if (p) savePhraseToBook(p, { sourceTitle:S.digest && S.digest.title, scenario:S.scenario });
+    if (p) savePhraseToBook(p, { sourceTitle:S.digest && S.digest.title, scenario:S.sessionKind === "free" ? S.sceneText : S.scenario });
     syncSummaryPhraseControls();
   }));
   const saveAll = $("saveAllPhrases");
   if (saveAll) saveAll.addEventListener("click", () => { saveSummaryPhrases(sm.phrases); syncSummaryPhraseControls(); });
   bindPhraseBookButton();
-  $("againBtn").addEventListener("click", () => { S.msgs = []; S.summary = null; setStage("setup"); });
-  $("newPdfBtn").addEventListener("click", resetAll);
+  $("againBtn").addEventListener("click", () => {
+    if (freeSession) startFreeChat();
+    else { invalidateConversation(true); S.msgs = []; S.summary = null; setStage("setup"); }
+  });
+  $("newSessionBtn").addEventListener("click", freeSession ? resetAll : resetResearch);
 }
 
 // ── boot ──
 render();
 boot();
+if ("serviceWorker" in navigator && location.protocol !== "file:"){
+  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(() => {}));
+}
 </script>
 </body>
 </html>
