@@ -401,6 +401,24 @@ async function exportPhraseBackup(){
     if (blob.size > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
     parsePhraseBackup(json);
 
+    if (window.showSaveFilePicker){
+      try{
+        const handle = await window.showSaveFilePicker({
+          id:"eigakkaiwa-phrase-backup",
+          suggestedName:fileName,
+          types:[{ description:"表現帳バックアップ", accept:{ "application/json":[".json"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob); await writable.close();
+        S.phraseNotice = "選択した場所へバックアップを保存しました。";
+        return;
+      }catch(e){
+        if (e && e.name === "AbortError"){
+          S.phraseNotice = "バックアップの保存をキャンセルしました。";
+          return;
+        }
+      }
+    }
     if (typeof File !== "undefined" && navigator.share && navigator.canShare){
       try{
         const candidates = [
@@ -416,26 +434,9 @@ async function exportPhraseBackup(){
             title:"Gemini英会話・使える表現帳",
             text:"使える表現と復習履歴のバックアップです。",
           });
-          S.phraseNotice = "バックアップを共有先へ保存しました。";
+          S.phraseNotice = "バックアップを共有先へ渡しました。";
           return;
         }
-      }catch(e){
-        if (e && e.name === "AbortError"){
-          S.phraseNotice = "バックアップの保存をキャンセルしました。";
-          return;
-        }
-      }
-    }
-    if (window.showSaveFilePicker){
-      try{
-        const handle = await window.showSaveFilePicker({
-          suggestedName:fileName,
-          types:[{ description:"JSONバックアップ", accept:{ "application/json":[".json"] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(blob); await writable.close();
-        S.phraseNotice = "バックアップを保存しました。";
-        return;
       }catch(e){
         if (e && e.name === "AbortError"){
           S.phraseNotice = "バックアップの保存をキャンセルしました。";
@@ -598,7 +599,7 @@ function refreshPhraseBookBadges(){
   if (backupSave){
     backupSave.disabled = phraseBackupBusy;
     backupSave.textContent = phraseBackupBusy && phraseBackupOperation === "export"
-      ? "保存先を開いています…" : "保存先を選んで保存";
+      ? "保存先を開いています…" : "保存場所を選ぶ";
   }
   const backupLoad = $("phraseBackupLoadBtn");
   if (backupLoad){
@@ -1842,9 +1843,9 @@ function recordPhraseReview(remembered){
 function phraseBackupCardHtml(){
   return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
     + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押すと、必ず共有先または保存先の選択画面が開きます。そこで <b style="color:var(--navy)">Google Drive</b> または端末内の保存先を選んでください。選択しない限り、スマホへ自動ダウンロードしません。読み込み時もDrive上のJSON/TXTファイルを選択できます。</p>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存場所を選ぶ」を押すと、必ず保存先または共有先の選択画面が開きます。そこで <b style="color:var(--navy)">Google Drive</b> または端末内の保存先を選んでください。選択しない限り、スマホへ自動ダウンロードしません。読み込み時もDrive上のJSON/TXTファイルを選択できます。</p>'
     + '<div class="backup-actions">'
-    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存先を選んで保存</button>'
+    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存場所を選ぶ</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
     + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
     + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
@@ -1922,7 +1923,7 @@ function renderPhraseBook(){
     +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
     +   '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
     + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
-    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">普段はこの端末のブラウザ内に保存されます。下の「保存先を選んで保存」から、スマホ本体やGoogle Driveへバックアップできます。</p>'
+    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">普段はこの端末のブラウザ内に保存されます。下の「保存場所を選ぶ」から、スマホ本体やGoogle Driveへバックアップできます。</p>'
     + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
     + backupCard + content + '</div>';
 
