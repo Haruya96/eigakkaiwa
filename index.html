@@ -387,13 +387,14 @@ function phraseBackupFileName(){
   return "eigakkaiwa-phrases-" + stamp + ".json";
 }
 
-async function exportPhraseBackup(){
+async function exportPhraseBackup(mode){
+  mode = mode === "share" ? "share" : "save";
   if (phraseBackupBusy) return;
   if (!loadSavedPhrases()){ refreshPhraseBookBadges(); return; }
   if (!S.savedPhrases.length){
     S.phraseNotice = "保存する表現がまだありません。"; refreshPhraseBookBadges(); return;
   }
-  phraseBackupBusy = true; phraseBackupOperation = "export"; refreshPhraseBookBadges();
+  phraseBackupBusy = true; phraseBackupOperation = mode; refreshPhraseBookBadges();
   try{
     const json = JSON.stringify(buildPhraseBackup());
     const fileName = phraseBackupFileName();
@@ -401,7 +402,7 @@ async function exportPhraseBackup(){
     if (blob.size > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
     parsePhraseBackup(json);
 
-    if (window.showSaveFilePicker){
+    if (mode === "save" && window.showSaveFilePicker){
       try{
         const handle = await window.showSaveFilePicker({
           id:"eigakkaiwa-phrase-backup",
@@ -417,6 +418,8 @@ async function exportPhraseBackup(){
           S.phraseNotice = "バックアップの保存をキャンセルしました。";
           return;
         }
+        S.phraseNotice = "保存先選択画面で保存できませんでした。必要な場合は「他のアプリへ共有」を押してください。";
+        return;
       }
     }
     if (typeof File !== "undefined" && navigator.share && navigator.canShare){
@@ -444,7 +447,9 @@ async function exportPhraseBackup(){
         }
       }
     }
-    S.phraseNotice = "このブラウザでは保存先を選ぶ画面を開けません。Android版Chromeでアプリを開き、もう一度お試しください。ファイルが勝手に端末へダウンロードされることはありません。";
+    S.phraseNotice = mode === "share"
+      ? "このブラウザではファイル共有画面を開けません。Android版Chromeでアプリを開き、もう一度お試しください。"
+      : "このブラウザでは保存先を選ぶ画面を開けません。Android版Chromeでアプリを開き、もう一度お試しください。ファイルが勝手に端末へダウンロードされることはありません。";
     return;
   }catch(e){
     if (e && e.message === "too_large") S.phraseNotice = "表現が多いため、バックアップを作成できませんでした。表現を減らしてもう一度お試しください。";
@@ -598,8 +603,14 @@ function refreshPhraseBookBadges(){
   const backupSave = $("phraseBackupSaveBtn");
   if (backupSave){
     backupSave.disabled = phraseBackupBusy;
-    backupSave.textContent = phraseBackupBusy && phraseBackupOperation === "export"
+    backupSave.textContent = phraseBackupBusy && phraseBackupOperation === "save"
       ? "保存先を開いています…" : "保存場所を選ぶ";
+  }
+  const backupShare = $("phraseBackupShareBtn");
+  if (backupShare){
+    backupShare.disabled = phraseBackupBusy;
+    backupShare.textContent = phraseBackupBusy && phraseBackupOperation === "share"
+      ? "共有先を開いています…" : "他のアプリへ共有";
   }
   const backupLoad = $("phraseBackupLoadBtn");
   if (backupLoad){
@@ -1847,6 +1858,7 @@ function phraseBackupCardHtml(){
     + '<div class="backup-actions">'
     + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存場所を選ぶ</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
+    + '<button id="phraseBackupShareBtn" class="btn btn-ghost" style="margin-top:8px">他のアプリへ共有</button>'
     + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
     + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
     + '</section>';
@@ -1854,7 +1866,9 @@ function phraseBackupCardHtml(){
 
 function bindPhraseBackupControls(){
   const save = $("phraseBackupSaveBtn");
-  if (save) save.addEventListener("click", () => { exportPhraseBackup(); });
+  if (save) save.addEventListener("click", () => { exportPhraseBackup("save"); });
+  const share = $("phraseBackupShareBtn");
+  if (share) share.addEventListener("click", () => { exportPhraseBackup("share"); });
   const load = $("phraseBackupLoadBtn"), input = $("phraseBackupFile");
   if (load && input) load.addEventListener("click", () => input.click());
   if (input) input.addEventListener("change", () => {
