@@ -70,15 +70,19 @@ textarea,input{font-family:inherit}
 .small-action.saved{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
 .phrase-row{display:flex;gap:10px;align-items:flex-start;padding-top:12px}
 .phrase-copy{min-width:0;flex:1}
+[lang="en"]{overflow-wrap:anywhere;word-break:break-word}
 .phrase-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
 .phrase-notice{min-height:20px;margin-top:8px;font-size:12px;font-weight:700;color:var(--green)}
 .phrase-notice.error{color:var(--red-ink)}
 .phrase-empty{font-size:12px;line-height:1.7;color:var(--sub);margin-top:8px}
+.backup-card{background:#F7FAFF;border:1px solid #C8D6EC;border-radius:16px;padding:16px;margin-top:14px}
+.backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media (max-width:420px){
   .phrase-row{flex-wrap:wrap}
   .phrase-actions{width:100%;justify-content:flex-end}
+  .backup-actions{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -129,6 +133,7 @@ const S = {
   hints:null, hintLoading:false, micNote:"",
   summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
   savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
+  manualEnglishDraft:"", manualJapaneseDraft:"",
   reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{},
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
@@ -145,6 +150,11 @@ function setStage(st){ S.stage = st; render(); }
 // ── API key (端末内に保存) ──
 const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model";
 const LS_PHRASES = "rtt_saved_phrases_v1", LS_PHRASES_LEGACY = "rtt_saved_phrases";
+const PHRASE_BACKUP_FORMAT = "eigakkaiwa.phrasebook.backup", PHRASE_BACKUP_VERSION = 1;
+const PHRASE_BACKUP_MAX_BYTES = 20 * 1024 * 1024;
+const PHRASE_BACKUP_MAX_ITEMS = 10000, PHRASE_BACKUP_MAX_TEXT = 4000;
+const PHRASE_BACKUP_MAX_REVIEWS = 1000000;
+let phraseBackupBusy = false, phraseBackupOperation = "";
 
 function normalizePhraseText(value){
   let text = String(value == null ? "" : value).trim().replace(/\s+/g, " ");
@@ -163,22 +173,36 @@ function makePhraseId(){
   return "phrase_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
 }
 
+function safeSavedDate(value, fallback){
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : fallback;
+}
+
+function safeReviewCount(value){
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count >= 0
+    ? Math.min(count, PHRASE_BACKUP_MAX_REVIEWS) : 0;
+}
+
 function coerceSavedPhrase(raw, index){
   if (typeof raw === "string") raw = { english:raw };
   if (!raw || typeof raw !== "object") return null;
   const english = normalizePhraseText(raw.english || raw.en);
   if (!english) return null;
-  const createdAt = raw.createdAt || raw.addedAt || new Date().toISOString();
+  const createdAt = safeSavedDate(raw.createdAt || raw.addedAt, new Date().toISOString());
+  const reviewCount = safeReviewCount(raw.reviewCount);
+  const rawId = normalizePhraseText(raw.id);
   return {
-    id: normalizePhraseText(raw.id) || ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
+    id:(rawId && rawId.length <= 200) ? rawId : ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
     english: english,
     japanese: normalizePhraseText(raw.japanese || raw.ja),
     createdAt: createdAt,
-    sourceTitle: normalizePhraseText(raw.sourceTitle),
-    scenario: normalizePhraseText(raw.scenario),
-    reviewCount: Math.max(0, Number(raw.reviewCount) || 0),
-    correctCount: Math.max(0, Number(raw.correctCount) || 0),
-    lastReviewedAt: raw.lastReviewedAt || null,
+    sourceTitle: normalizePhraseText(raw.sourceTitle).slice(0, 800),
+    scenario: normalizePhraseText(raw.scenario).slice(0, 80),
+    reviewCount:reviewCount,
+    correctCount:Math.min(reviewCount, safeReviewCount(raw.correctCount)),
+    lastReviewedAt:safeSavedDate(raw.lastReviewedAt, null),
   };
 }
 
@@ -194,13 +218,16 @@ function writeSavedPhrases(items){
 }
 
 function loadSavedPhrases(){
+  const previous = S.savedPhrases;
   let raw = null, migrated = false;
   try{
     raw = localStorage.getItem(LS_PHRASES);
     if (raw == null){ raw = localStorage.getItem(LS_PHRASES_LEGACY); migrated = raw != null; }
-    if (!raw){ S.savedPhrases = []; return; }
+    if (raw == null){ S.savedPhrases = []; return true; }
+    if (!raw) throw new Error("invalid_storage");
     const parsed = JSON.parse(raw);
-    const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : []);
+    const source = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : null);
+    if (!source) throw new Error("invalid_storage");
     const seen = new Set(), ids = new Set();
     S.savedPhrases = source.map(coerceSavedPhrase).filter(p => {
       if (!p) return false;
@@ -211,9 +238,11 @@ function loadSavedPhrases(){
       ids.add(p.id); return true;
     });
     if (migrated) writeSavedPhrases(S.savedPhrases);
+    return true;
   }catch(e){
-    S.savedPhrases = [];
+    S.savedPhrases = previous;
     S.phraseNotice = "保存済みの表現を読み込めませんでした。";
+    return false;
   }
 }
 
@@ -231,7 +260,7 @@ function phraseNeedsTranslation(phrase){
 }
 
 function phraseNoticeIsError(){
-  return /できません|入力してください|読み込めません|失敗/.test(S.phraseNotice || "");
+  return /できません|入力してください|読み込めません|失敗|更新してください/.test(S.phraseNotice || "");
 }
 
 function savePhraseToBook(phrase, source){
@@ -302,6 +331,223 @@ function removeSavedPhrase(id){
   return true;
 }
 
+function buildPhraseBackup(){
+  return {
+    format:PHRASE_BACKUP_FORMAT,
+    schemaVersion:PHRASE_BACKUP_VERSION,
+    exportedAt:new Date().toISOString(),
+    itemCount:S.savedPhrases.length,
+    items:S.savedPhrases.map(p => ({
+      id:normalizePhraseText(p.id) || makePhraseId(),
+      english:normalizePhraseText(p.english),
+      japanese:normalizePhraseText(p.japanese),
+      createdAt:safeSavedDate(p.createdAt, null),
+      reviewCount:safeReviewCount(p.reviewCount),
+      correctCount:Math.min(safeReviewCount(p.reviewCount), safeReviewCount(p.correctCount)),
+      lastReviewedAt:safeSavedDate(p.lastReviewedAt, null),
+    })),
+  };
+}
+
+function phraseBackupFileName(){
+  const now = new Date(), pad = value => String(value).padStart(2, "0");
+  const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate())
+    + "-" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+  return "eigakkaiwa-phrases-" + stamp + ".json";
+}
+
+function downloadPhraseBackup(blob, fileName){
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url; link.download = fileName; link.style.display = "none";
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportPhraseBackup(){
+  if (phraseBackupBusy) return;
+  if (!loadSavedPhrases()){ refreshPhraseBookBadges(); return; }
+  if (!S.savedPhrases.length){
+    S.phraseNotice = "保存する表現がまだありません。"; refreshPhraseBookBadges(); return;
+  }
+  phraseBackupBusy = true; phraseBackupOperation = "export"; refreshPhraseBookBadges();
+  try{
+    const json = JSON.stringify(buildPhraseBackup());
+    const fileName = phraseBackupFileName();
+    const blob = new Blob([json], { type:"application/json" });
+    if (blob.size > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
+    parsePhraseBackup(json);
+
+    if (typeof File !== "undefined" && navigator.share && navigator.canShare){
+      try{
+        const file = new File([blob], fileName, { type:"application/json" });
+        if (navigator.canShare({ files:[file] })){
+          await navigator.share({
+            files:[file],
+            title:"研究英会話・使える表現帳",
+            text:"使える表現と復習履歴のバックアップです。",
+          });
+          S.phraseNotice = "バックアップを共有先へ保存しました。";
+          return;
+        }
+      }catch(e){
+        if (e && e.name === "AbortError"){
+          S.phraseNotice = "バックアップの保存をキャンセルしました。";
+          return;
+        }
+      }
+    }
+    if (window.showSaveFilePicker){
+      try{
+        const handle = await window.showSaveFilePicker({
+          suggestedName:fileName,
+          types:[{ description:"JSONバックアップ", accept:{ "application/json":[".json"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob); await writable.close();
+        S.phraseNotice = "バックアップを保存しました。";
+        return;
+      }catch(e){
+        if (e && e.name === "AbortError"){
+          S.phraseNotice = "バックアップの保存をキャンセルしました。";
+          return;
+        }
+      }
+    }
+    downloadPhraseBackup(blob, fileName);
+    S.phraseNotice = "バックアップをダウンロードしました。";
+  }catch(e){
+    if (e && e.message === "too_large") S.phraseNotice = "表現が多いため、バックアップを作成できませんでした。表現を減らしてもう一度お試しください。";
+    else if (e && e.message === "invalid_backup") S.phraseNotice = "保存済みデータをバックアップに変換できませんでした。";
+    else S.phraseNotice = "バックアップを保存できませんでした。別のブラウザでお試しください。";
+  }finally{
+    phraseBackupBusy = false; phraseBackupOperation = "";
+    refreshPhraseBookBadges();
+  }
+}
+
+function readBackupFileText(file){
+  if (file && typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("read_failed"));
+    reader.readAsText(file);
+  });
+}
+
+function parsePhraseBackup(text){
+  if (typeof text !== "string" || text.length > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
+  let parsed;
+  try{ parsed = JSON.parse(text); }catch(e){ throw new Error("invalid_backup"); }
+  let source = null;
+  if (Array.isArray(parsed)) source = parsed;
+  else if (parsed && parsed.format === PHRASE_BACKUP_FORMAT){
+    if (Number(parsed.schemaVersion) > PHRASE_BACKUP_VERSION) throw new Error("future_backup");
+    if (Number(parsed.schemaVersion) !== PHRASE_BACKUP_VERSION || !Array.isArray(parsed.items)) throw new Error("invalid_backup");
+    source = parsed.items;
+  } else if (parsed && Number(parsed.version) === 1 && Array.isArray(parsed.items)){
+    source = parsed.items;
+  }
+  if (!source || source.length > PHRASE_BACKUP_MAX_ITEMS) throw new Error("invalid_backup");
+
+  const items = [], seen = new Set(), ids = new Set();
+  source.forEach((raw, index) => {
+    if (typeof raw !== "string"){
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_backup");
+      const rawEnglish = raw.english != null ? raw.english : raw.en;
+      const rawJapanese = raw.japanese != null ? raw.japanese : raw.ja;
+      if (typeof rawEnglish !== "string" || (rawJapanese != null && typeof rawJapanese !== "string")) throw new Error("invalid_backup");
+    }
+    const item = coerceSavedPhrase(raw, index);
+    if (!item || item.english.length > PHRASE_BACKUP_MAX_TEXT || item.japanese.length > PHRASE_BACKUP_MAX_TEXT) throw new Error("invalid_backup");
+    item.sourceTitle = ""; item.scenario = "";
+    const key = phraseFingerprint(item.english);
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (ids.has(item.id)) item.id = makePhraseId();
+    ids.add(item.id); items.push(item);
+  });
+  return items;
+}
+
+function earlierSavedDate(a, b){
+  const am = new Date(a || 0).getTime(), bm = new Date(b || 0).getTime();
+  if (!isNaN(am) && !isNaN(bm)) return am <= bm ? a : b;
+  return a || b || new Date().toISOString();
+}
+
+function laterSavedDate(a, b){
+  const am = new Date(a || 0).getTime(), bm = new Date(b || 0).getTime();
+  if (!isNaN(am) && !isNaN(bm)) return am >= bm ? a : b;
+  return a || b || null;
+}
+
+function mergePhraseBackupItems(imported){
+  const next = S.savedPhrases.slice(), byKey = new Map(), usedIds = new Set();
+  next.forEach((p, index) => { byKey.set(phraseFingerprint(p.english), index); usedIds.add(p.id); });
+  const additions = [];
+  let updated = 0, unchanged = 0;
+  imported.forEach(item => {
+    const key = phraseFingerprint(item.english);
+    if (!byKey.has(key)){
+      const copy = Object.assign({}, item);
+      if (!copy.id || usedIds.has(copy.id)) copy.id = makePhraseId();
+      usedIds.add(copy.id); additions.push(copy); return;
+    }
+    const index = byKey.get(key), current = next[index];
+    const reviewCount = Math.max(Number(current.reviewCount) || 0, Number(item.reviewCount) || 0);
+    const correctCount = Math.min(reviewCount, Math.max(Number(current.correctCount) || 0, Number(item.correctCount) || 0));
+    const merged = Object.assign({}, current, {
+      japanese:current.japanese || item.japanese,
+      createdAt:earlierSavedDate(current.createdAt, item.createdAt),
+      sourceTitle:current.sourceTitle || item.sourceTitle,
+      scenario:current.scenario || item.scenario,
+      reviewCount:reviewCount,
+      correctCount:correctCount,
+      lastReviewedAt:laterSavedDate(current.lastReviewedAt, item.lastReviewedAt),
+    });
+    const changed = merged.japanese !== current.japanese || merged.createdAt !== current.createdAt
+      || merged.sourceTitle !== current.sourceTitle || merged.scenario !== current.scenario
+      || merged.reviewCount !== current.reviewCount || merged.correctCount !== current.correctCount
+      || merged.lastReviewedAt !== current.lastReviewedAt;
+    if (changed){ next[index] = merged; updated += 1; } else unchanged += 1;
+  });
+  return { items:additions.concat(next), added:additions.length, updated:updated, unchanged:unchanged };
+}
+
+async function importPhraseBackupFile(file){
+  if (phraseBackupBusy) return;
+  phraseBackupBusy = true; phraseBackupOperation = "import"; refreshPhraseBookBadges();
+  try{
+    if (!file || Number(file.size || 0) > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
+    const imported = parsePhraseBackup(await readBackupFileText(file));
+    if (!loadSavedPhrases()) throw new Error("storage_read_failed");
+    const merged = mergePhraseBackupItems(imported);
+    if (!writeSavedPhrases(merged.items)){ refreshPhraseBookBadges(); return; }
+    if (!imported.length) S.phraseNotice = "バックアップに保存された表現はありませんでした。";
+    else if (!merged.added && !merged.updated) S.phraseNotice = "すべて読み込み済みです（" + merged.unchanged + "件）。";
+    else {
+      const parts = [];
+      if (merged.added) parts.push(merged.added + "件を追加");
+      if (merged.updated) parts.push(merged.updated + "件の復習履歴を更新");
+      S.phraseNotice = "バックアップから" + parts.join("、") + "しました。";
+    }
+    if (S.stage === "phrasebook") renderPhraseBook(); else refreshPhraseBookBadges();
+  }catch(e){
+    S.phraseNotice = e && e.message === "too_large"
+      ? "バックアップが大きすぎるため読み込めませんでした。"
+      : (e && e.message === "future_backup"
+        ? "新しい形式のバックアップです。アプリを更新してください。"
+        : (e && e.message === "storage_read_failed"
+          ? "現在の表現帳を確認できなかったため、読み込みを中止しました。"
+          : "表現帳のバックアップとして読み込めませんでした。"));
+  }finally{
+    phraseBackupBusy = false; phraseBackupOperation = "";
+    refreshPhraseBookBadges();
+  }
+}
+
 function phraseBookButton(dark, compact){
   return '<button id="phraseBookBtn" class="book-link' + (dark ? ' dark' : '')
     + '" aria-label="保存した表現を開く">📚 ' + (compact ? '' : '表現帳 ') + '<span id="phraseBookCount">' + S.savedPhrases.length + '</span></button>';
@@ -316,6 +562,18 @@ function refreshPhraseBookBadges(){
   document.querySelectorAll("#phraseBookCount").forEach(n => { n.textContent = S.savedPhrases.length; });
   const note = $("phraseNotice");
   if (note){ note.textContent = S.phraseNotice; note.classList.toggle("error", phraseNoticeIsError()); }
+  const backupSave = $("phraseBackupSaveBtn");
+  if (backupSave){
+    backupSave.disabled = phraseBackupBusy;
+    backupSave.textContent = phraseBackupBusy && phraseBackupOperation === "export"
+      ? "保存先を開いています…" : "保存先を選んで保存";
+  }
+  const backupLoad = $("phraseBackupLoadBtn");
+  if (backupLoad){
+    backupLoad.disabled = phraseBackupBusy;
+    backupLoad.textContent = phraseBackupBusy && phraseBackupOperation === "import"
+      ? "読み込んでいます…" : "バックアップを読み込む";
+  }
 }
 
 function openPhraseBook(){
@@ -1214,6 +1472,30 @@ function recordPhraseReview(remembered){
   renderPhraseBook();
 }
 
+function phraseBackupCardHtml(){
+  return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
+    + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押し、共有先から <b style="color:var(--navy)">Google Drive</b> を選べます。読み込み時もDrive上のJSONファイルを選択できます。</p>'
+    + '<div class="backup-actions">'
+    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存先を選んで保存</button>'
+    + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
+    + '<input id="phraseBackupFile" type="file" accept=".json,application/json" hidden>'
+    + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
+    + '</section>';
+}
+
+function bindPhraseBackupControls(){
+  const save = $("phraseBackupSaveBtn");
+  if (save) save.addEventListener("click", () => { exportPhraseBackup(); });
+  const load = $("phraseBackupLoadBtn"), input = $("phraseBackupFile");
+  if (load && input) load.addEventListener("click", () => input.click());
+  if (input) input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (file) importPhraseBackupFile(file);
+  });
+}
+
 function renderPhraseBook(){
   let content = "";
   if (S.phraseView === "review"){
@@ -1257,8 +1539,8 @@ function renderPhraseBook(){
     });
     content = '<div class="card" style="padding:16px;margin-top:20px">'
       + '<div class="mono eyebrow">ADD ─ 表現を追加</div>'
-      + '<input id="manualEnglish" type="text" maxlength="800" placeholder="English expression" style="margin-top:10px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
-      + '<input id="manualJapanese" type="text" maxlength="800" placeholder="日本語訳（任意）" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
+      + '<input id="manualEnglish" type="text" maxlength="800" value="' + esc(S.manualEnglishDraft) + '" placeholder="English expression" style="margin-top:10px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
+      + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
       + '<button id="manualPhraseSave" class="btn btn-navy" style="margin-top:10px">表現帳に追加する</button></div>'
       + (S.savedPhrases.length
         ? '<button id="startReviewBtn" class="btn btn-stripe" style="margin-top:8px">復習をはじめる（' + S.savedPhrases.length + '件）</button>' + rows
@@ -1267,6 +1549,7 @@ function renderPhraseBook(){
           + '<p class="phrase-empty">セッションレポートの「使える表現」から保存するか、上の入力欄から追加できます。</p></div>');
   }
 
+  const backupCard = S.phraseView === "list" ? phraseBackupCardHtml() : "";
   app.innerHTML = '<div class="wrap safe-bottom" style="padding-top:24px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
     +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
@@ -1274,17 +1557,22 @@ function renderPhraseBook(){
     + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
     + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">この端末のブラウザ内に保存されます。APIキーを削除しても表現は残ります。</p>'
     + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
-    + content + '</div>';
+    + backupCard + content + '</div>';
 
   $("phraseBackBtn").addEventListener("click", closePhraseBook);
+  bindPhraseBackupControls();
+  const manualEn = $("manualEnglish"), manualJa = $("manualJapanese");
+  if (manualEn) manualEn.addEventListener("input", () => { S.manualEnglishDraft = manualEn.value; });
+  if (manualJa) manualJa.addEventListener("input", () => { S.manualJapaneseDraft = manualJa.value; });
   const manualSave = $("manualPhraseSave");
   if (manualSave) manualSave.addEventListener("click", () => {
     const result = savePhraseToBook({ english:$("manualEnglish").value, japanese:$("manualJapanese").value }, {});
     if (result === "invalid" || result === "failed"){
       refreshPhraseBookBadges(); if (result === "invalid") $("manualEnglish").focus();
-    } else renderPhraseBook();
+    } else {
+      S.manualEnglishDraft = ""; S.manualJapaneseDraft = ""; renderPhraseBook();
+    }
   });
-  const manualJa = $("manualJapanese");
   if (manualJa) manualJa.addEventListener("keydown", e => { if (e.key === "Enter") manualSave.click(); });
   document.querySelectorAll(".savedPhraseSpeak").forEach(b => b.addEventListener("click", () => {
     const p = S.savedPhrases.find(x => x.id === b.getAttribute("data-id"));
