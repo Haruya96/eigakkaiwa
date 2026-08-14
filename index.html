@@ -387,14 +387,6 @@ function phraseBackupFileName(){
   return "eigakkaiwa-phrases-" + stamp + ".json";
 }
 
-function downloadPhraseBackup(blob, fileName){
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url; link.download = fileName; link.style.display = "none";
-  document.body.appendChild(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 async function exportPhraseBackup(){
   if (phraseBackupBusy) return;
   if (!loadSavedPhrases()){ refreshPhraseBookBadges(); return; }
@@ -451,8 +443,8 @@ async function exportPhraseBackup(){
         }
       }
     }
-    downloadPhraseBackup(blob, fileName);
-    S.phraseNotice = "バックアップをダウンロードしました。";
+    S.phraseNotice = "このブラウザでは保存先を選ぶ画面を開けません。Android版Chromeでアプリを開き、もう一度お試しください。ファイルが勝手に端末へダウンロードされることはありません。";
+    return;
   }catch(e){
     if (e && e.message === "too_large") S.phraseNotice = "表現が多いため、バックアップを作成できませんでした。表現を減らしてもう一度お試しください。";
     else if (e && e.message === "invalid_backup") S.phraseNotice = "保存済みデータをバックアップに変換できませんでした。";
@@ -1850,7 +1842,7 @@ function recordPhraseReview(remembered){
 function phraseBackupCardHtml(){
   return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
     + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押し、共有先から <b style="color:var(--navy)">Google Drive</b> または端末の保存先を選べます。読み込み時もDrive上のJSON/TXTファイルを選択できます。</p>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押すと、必ず共有先または保存先の選択画面が開きます。そこで <b style="color:var(--navy)">Google Drive</b> または端末内の保存先を選んでください。選択しない限り、スマホへ自動ダウンロードしません。読み込み時もDrive上のJSON/TXTファイルを選択できます。</p>'
     + '<div class="backup-actions">'
     + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存先を選んで保存</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
