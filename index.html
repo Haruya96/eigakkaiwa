@@ -356,14 +356,6 @@ function phraseBackupFileName(){
   return "eigakkaiwa-phrases-" + stamp + ".json";
 }
 
-function downloadPhraseBackup(blob, fileName){
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url; link.download = fileName; link.style.display = "none";
-  document.body.appendChild(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 async function exportPhraseBackup(){
   if (phraseBackupBusy) return;
   if (!loadSavedPhrases()){ refreshPhraseBookBadges(); return; }
@@ -378,34 +370,16 @@ async function exportPhraseBackup(){
     if (blob.size > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
     parsePhraseBackup(json);
 
-    if (typeof File !== "undefined" && navigator.share && navigator.canShare){
-      try{
-        const file = new File([blob], fileName, { type:"application/json" });
-        if (navigator.canShare({ files:[file] })){
-          await navigator.share({
-            files:[file],
-            title:"研究英会話・使える表現帳",
-            text:"使える表現と復習履歴のバックアップです。",
-          });
-          S.phraseNotice = "バックアップを共有先へ保存しました。";
-          return;
-        }
-      }catch(e){
-        if (e && e.name === "AbortError"){
-          S.phraseNotice = "バックアップの保存をキャンセルしました。";
-          return;
-        }
-      }
-    }
     if (window.showSaveFilePicker){
       try{
         const handle = await window.showSaveFilePicker({
+          id:"eigakkaiwa-phrase-backup",
           suggestedName:fileName,
-          types:[{ description:"JSONバックアップ", accept:{ "application/json":[".json"] } }],
+          types:[{ description:"表現帳バックアップ", accept:{ "application/json":[".json"] } }],
         });
         const writable = await handle.createWritable();
         await writable.write(blob); await writable.close();
-        S.phraseNotice = "バックアップを保存しました。";
+        S.phraseNotice = "選択した場所へバックアップを保存しました。";
         return;
       }catch(e){
         if (e && e.name === "AbortError"){
@@ -414,8 +388,29 @@ async function exportPhraseBackup(){
         }
       }
     }
-    downloadPhraseBackup(blob, fileName);
-    S.phraseNotice = "バックアップをダウンロードしました。";
+
+    if (typeof File !== "undefined" && navigator.share && navigator.canShare){
+      try{
+        const candidates = [
+          new File([json], fileName, { type:"application/json" }),
+          new File([json], fileName.replace(/\.json$/i, ".txt"), { type:"text/plain" }),
+        ];
+        const shareFile = candidates.find(file => {
+          try{ return navigator.canShare({ files:[file] }); }catch(e){ return false; }
+        });
+        if (shareFile){
+          await navigator.share({ files:[shareFile], title:"研究英会話・使える表現帳" });
+          S.phraseNotice = "選択した共有先へバックアップを保存しました。";
+          return;
+        }
+      }catch(e){
+        if (e && e.name === "AbortError"){
+          S.phraseNotice = "バックアップの保存をキャンセルしました。";
+          return;
+        }
+      }
+    }
+    S.phraseNotice = "このブラウザでは保存先を選択できませんでした。最新版のChromeで開いてください。";
   }catch(e){
     if (e && e.message === "too_large") S.phraseNotice = "表現が多いため、バックアップを作成できませんでした。表現を減らしてもう一度お試しください。";
     else if (e && e.message === "invalid_backup") S.phraseNotice = "保存済みデータをバックアップに変換できませんでした。";
@@ -566,7 +561,7 @@ function refreshPhraseBookBadges(){
   if (backupSave){
     backupSave.disabled = phraseBackupBusy;
     backupSave.textContent = phraseBackupBusy && phraseBackupOperation === "export"
-      ? "保存先を開いています…" : "保存先を選んで保存";
+      ? "保存先を開いています…" : "保存場所を選ぶ";
   }
   const backupLoad = $("phraseBackupLoadBtn");
   if (backupLoad){
@@ -1475,11 +1470,11 @@ function recordPhraseReview(remembered){
 function phraseBackupCardHtml(){
   return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
     + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">Androidでは「保存先を選んで保存」を押し、共有先から <b style="color:var(--navy)">Google Drive</b> を選べます。読み込み時もDrive上のJSONファイルを選択できます。</p>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">「保存場所を選ぶ」を押すと保存先の選択画面が開きます。<b style="color:var(--navy)">Google Drive</b>を選んで保存してください。端末のDownloadsへ自動保存はしません。</p>'
     + '<div class="backup-actions">'
-    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存先を選んで保存</button>'
+    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">保存場所を選ぶ</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
-    + '<input id="phraseBackupFile" type="file" accept=".json,application/json" hidden>'
+    + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
     + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
     + '</section>';
 }
