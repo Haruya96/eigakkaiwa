@@ -64,6 +64,22 @@ textarea,input{font-family:inherit}
 .diff-btn{flex:1;border:1px solid var(--line);background:var(--paper);color:var(--sub);border-radius:12px;padding:9px 0;font-weight:700;font-size:14px}
 .diff-btn.on{background:var(--navy);border-color:var(--navy);color:#fff}
 .hintbtn{width:100%;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:9px 12px;margin-top:8px}
+.book-link{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;padding:7px 11px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--navy);font-size:12px;font-weight:700;white-space:nowrap}
+.book-link.dark{border-color:#63708A;background:rgba(255,255,255,.08);color:#fff}
+.small-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--navy);font-size:12px;font-weight:700;white-space:nowrap}
+.small-action.saved{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
+.phrase-row{display:flex;gap:10px;align-items:flex-start;padding-top:12px}
+.phrase-copy{min-width:0;flex:1}
+.phrase-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.phrase-notice{min-height:20px;margin-top:8px;font-size:12px;font-weight:700;color:var(--green)}
+.phrase-notice.error{color:var(--red-ink)}
+.phrase-empty{font-size:12px;line-height:1.7;color:var(--sub);margin-top:8px}
+.review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+@media (max-width:420px){
+  .phrase-row{flex-wrap:wrap}
+  .phrase-actions{width:100%;justify-content:flex-end}
+}
 </style>
 </head>
 <body>
@@ -103,14 +119,17 @@ const ANALYZE_MSGS = ["PDFを読み込んでいます…","研究内容を分析
 
 // ── state ──
 const S = {
-  stage:"loading",            // loading | key | upload | analyzing | setup | chat | summary
+  stage:"loading",            // loading | key | upload | analyzing | setup | chat | summary | phrasebook
   apiKey:"", model:DEFAULT_MODEL,
+  keyDraft:"", modelDraft:"", chatDraft:"",
   error:null, fileName:"", pdfB64:null, digest:null,
   scenario:"qa", difficulty:"normal", showDigest:false,
   persona:"", msgs:[], sending:false, chatError:null, pending:null,
   showFeedback:true, autoSpeak:false,
   hints:null, hintLoading:false, micNote:"",
-  summary:null, summaryLoading:false, summaryError:false,
+  summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
+  savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
+  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{},
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
 
@@ -125,8 +144,200 @@ function setStage(st){ S.stage = st; render(); }
 
 // ── API key (端末内に保存) ──
 const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model";
+const LS_PHRASES = "rtt_saved_phrases_v1", LS_PHRASES_LEGACY = "rtt_saved_phrases";
+
+function normalizePhraseText(value){
+  let text = String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+  try{ text = text.normalize("NFKC"); }catch(e){}
+  return text;
+}
+
+function phraseFingerprint(value){
+  return normalizePhraseText(value)
+    .toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\s.!?。！？]+$/g, "");
+}
+
+function makePhraseId(){
+  try{ if (crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+  return "phrase_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
+}
+
+function coerceSavedPhrase(raw, index){
+  if (typeof raw === "string") raw = { english:raw };
+  if (!raw || typeof raw !== "object") return null;
+  const english = normalizePhraseText(raw.english || raw.en);
+  if (!english) return null;
+  const createdAt = raw.createdAt || raw.addedAt || new Date().toISOString();
+  return {
+    id: normalizePhraseText(raw.id) || ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
+    english: english,
+    japanese: normalizePhraseText(raw.japanese || raw.ja),
+    createdAt: createdAt,
+    sourceTitle: normalizePhraseText(raw.sourceTitle),
+    scenario: normalizePhraseText(raw.scenario),
+    reviewCount: Math.max(0, Number(raw.reviewCount) || 0),
+    correctCount: Math.max(0, Number(raw.correctCount) || 0),
+    lastReviewedAt: raw.lastReviewedAt || null,
+  };
+}
+
+function writeSavedPhrases(items){
+  try{
+    localStorage.setItem(LS_PHRASES, JSON.stringify({ version:1, items:items }));
+    S.savedPhrases = items;
+    return true;
+  }catch(e){
+    S.phraseNotice = "この端末に保存できませんでした。ブラウザの保存設定をご確認ください。";
+    return false;
+  }
+}
+
+function loadSavedPhrases(){
+  let raw = null, migrated = false;
+  try{
+    raw = localStorage.getItem(LS_PHRASES);
+    if (raw == null){ raw = localStorage.getItem(LS_PHRASES_LEGACY); migrated = raw != null; }
+    if (!raw){ S.savedPhrases = []; return; }
+    const parsed = JSON.parse(raw);
+    const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : []);
+    const seen = new Set(), ids = new Set();
+    S.savedPhrases = source.map(coerceSavedPhrase).filter(p => {
+      if (!p) return false;
+      const key = phraseFingerprint(p.english);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      if (ids.has(p.id)) p.id = makePhraseId();
+      ids.add(p.id); return true;
+    });
+    if (migrated) writeSavedPhrases(S.savedPhrases);
+  }catch(e){
+    S.savedPhrases = [];
+    S.phraseNotice = "保存済みの表現を読み込めませんでした。";
+  }
+}
+
+function isPhraseSaved(english){
+  const key = phraseFingerprint(english);
+  return !!key && S.savedPhrases.some(p => phraseFingerprint(p.english) === key);
+}
+
+function phraseNeedsTranslation(phrase){
+  const key = phraseFingerprint(phrase && phrase.english);
+  const japanese = normalizePhraseText(phrase && phrase.japanese);
+  if (!key || !japanese) return false;
+  const found = S.savedPhrases.find(p => phraseFingerprint(p.english) === key);
+  return !!found && !found.japanese;
+}
+
+function phraseNoticeIsError(){
+  return /できません|入力してください|読み込めません|失敗/.test(S.phraseNotice || "");
+}
+
+function savePhraseToBook(phrase, source){
+  const english = normalizePhraseText(phrase && phrase.english);
+  const japanese = normalizePhraseText(phrase && phrase.japanese);
+  if (!english){ S.phraseNotice = "英語表現を入力してください。"; return "invalid"; }
+  const key = phraseFingerprint(english);
+  const found = S.savedPhrases.findIndex(p => phraseFingerprint(p.english) === key);
+  if (found !== -1){
+    if (!S.savedPhrases[found].japanese && japanese){
+      const updated = S.savedPhrases.slice();
+      updated[found] = Object.assign({}, updated[found], { japanese:japanese });
+      if (!writeSavedPhrases(updated)) return "failed";
+    }
+    S.phraseNotice = "この表現は保存済みです。";
+    return "exists";
+  }
+  source = source || {};
+  const item = {
+    id:makePhraseId(), english:english, japanese:japanese, createdAt:new Date().toISOString(),
+    sourceTitle:normalizePhraseText(source.sourceTitle), scenario:normalizePhraseText(source.scenario),
+    reviewCount:0, correctCount:0, lastReviewedAt:null,
+  };
+  if (!writeSavedPhrases([item].concat(S.savedPhrases))) return "failed";
+  S.phraseNotice = "表現帳に保存しました。";
+  return "added";
+}
+
+function saveSummaryPhrases(phrases){
+  const source = { sourceTitle:S.digest && S.digest.title, scenario:S.scenario };
+  const additions = [], updated = S.savedPhrases.slice();
+  const byKey = new Map(), pendingKeys = new Set();
+  updated.forEach((p, i) => { byKey.set(phraseFingerprint(p.english), i); });
+  let translations = 0;
+  (phrases || []).forEach(p => {
+    const english = normalizePhraseText(p && p.english);
+    const japanese = normalizePhraseText(p && p.japanese);
+    const key = phraseFingerprint(english);
+    if (!english || pendingKeys.has(key)) return;
+    if (byKey.has(key)){
+      const i = byKey.get(key);
+      if (!updated[i].japanese && japanese){
+        updated[i] = Object.assign({}, updated[i], { japanese:japanese }); translations += 1;
+      }
+      return;
+    }
+    pendingKeys.add(key);
+    additions.push({
+      id:makePhraseId(), english:english, japanese:japanese, createdAt:new Date().toISOString(),
+      sourceTitle:normalizePhraseText(source.sourceTitle), scenario:normalizePhraseText(source.scenario),
+      reviewCount:0, correctCount:0, lastReviewedAt:null,
+    });
+  });
+  if (!additions.length && !translations){ S.phraseNotice = "すべて保存済みです。"; return 0; }
+  if (!writeSavedPhrases(additions.concat(updated))) return 0;
+  const parts = [];
+  if (additions.length) parts.push(additions.length + "件を保存");
+  if (translations) parts.push(translations + "件に日本語訳を追加");
+  S.phraseNotice = parts.join("、") + "しました。";
+  return additions.length + translations;
+}
+
+function removeSavedPhrase(id){
+  const next = S.savedPhrases.filter(p => p.id !== id);
+  if (next.length === S.savedPhrases.length) return false;
+  if (!writeSavedPhrases(next)) return false;
+  S.phraseNotice = "表現を削除しました。";
+  return true;
+}
+
+function phraseBookButton(dark, compact){
+  return '<button id="phraseBookBtn" class="book-link' + (dark ? ' dark' : '')
+    + '" aria-label="保存した表現を開く">📚 ' + (compact ? '' : '表現帳 ') + '<span id="phraseBookCount">' + S.savedPhrases.length + '</span></button>';
+}
+
+function bindPhraseBookButton(){
+  const b = $("phraseBookBtn");
+  if (b) b.addEventListener("click", openPhraseBook);
+}
+
+function refreshPhraseBookBadges(){
+  document.querySelectorAll("#phraseBookCount").forEach(n => { n.textContent = S.savedPhrases.length; });
+  const note = $("phraseNotice");
+  if (note){ note.textContent = S.phraseNotice; note.classList.toggle("error", phraseNoticeIsError()); }
+}
+
+function openPhraseBook(){
+  if (S.stage === "chat" && (recording || transcribing || listening)){
+    showMicNote("録音・文字起こしが完了してから表現帳を開いてください。");
+    return;
+  }
+  try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  if (S.stage !== "phrasebook") S.phraseReturnStage = S.stage;
+  S.phraseView = "list"; S.reviewReveal = false;
+  setStage("phrasebook");
+}
+
+function closePhraseBook(){
+  const allowed = ["key","upload","setup","chat","summary"];
+  const target = allowed.indexOf(S.phraseReturnStage) !== -1
+    ? S.phraseReturnStage : (S.apiKey ? "upload" : "key");
+  setStage(target);
+}
 
 function boot(){
+  loadSavedPhrases();
   try{
     const k = localStorage.getItem(LS_KEY);
     const m = localStorage.getItem(LS_MODEL);
@@ -138,18 +349,19 @@ function boot(){
 function applyKey(){
   const k = ($("keyPaste") ? $("keyPaste").value : "").trim();
   const m = (($("modelInput") ? $("modelInput").value : "").trim()) || DEFAULT_MODEL;
+  S.keyDraft = k; S.modelDraft = m;
   if (!/^[\x21-\x7E]{8,}$/.test(k)){
     S.error = "APIキーの形式が正しくありません（半角8文字以上・スペースなし）。";
     render(); return;
   }
-  S.apiKey = k; S.model = m; S.error = null;
+  S.apiKey = k; S.model = m; S.keyDraft = ""; S.modelDraft = ""; S.error = null;
   try{ localStorage.setItem(LS_KEY, k); localStorage.setItem(LS_MODEL, m); }catch(e){}
   setStage("upload");
 }
 
 function clearKey(){
   try{ localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_MODEL); }catch(e){}
-  S.apiKey = ""; S.model = DEFAULT_MODEL; S.error = null;
+  S.apiKey = ""; S.model = DEFAULT_MODEL; S.keyDraft = ""; S.modelDraft = ""; S.error = null;
   setStage("key");
 }
 
@@ -207,11 +419,11 @@ const SCHEMA_HINTS = { type:"OBJECT", properties:{
 }, required:["hints"] };
 const SCHEMA_SUMMARY = { type:"OBJECT", properties:{
   overall:{ type:"STRING" },
-  strengths:{ type:"ARRAY", items:{ type:"STRING" } },
-  improvements:{ type:"ARRAY", items:{ type:"STRING" } },
-  phrases:{ type:"ARRAY", items:{ type:"OBJECT", properties:{
+  strengths:{ type:"ARRAY", minItems:2, maxItems:3, items:{ type:"STRING" } },
+  improvements:{ type:"ARRAY", minItems:2, maxItems:3, items:{ type:"STRING" } },
+  phrases:{ type:"ARRAY", minItems:3, maxItems:4, items:{ type:"OBJECT", properties:{
     english:{ type:"STRING" }, japanese:{ type:"STRING" } }, required:["english","japanese"] } },
-}, required:["overall"] };
+}, required:["overall","strengths","improvements","phrases"] };
 const SCHEMA_TRANSCRIPT = { type:"OBJECT", properties:{ transcript:{ type:"STRING" } }, required:["transcript"] };
 
 function extractBalancedJSON(text){
@@ -339,7 +551,8 @@ function toggleListening(){
     rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false;
     rec.onresult = (e) => {
       const t = Array.from(e.results).map(r => r[0].transcript).join("");
-      const ta = $("chatInput"); if (ta) ta.value = t;
+      S.chatDraft = t;
+      const ta = $("chatInput"); if (ta) ta.value = S.chatDraft;
     };
     rec.onerror = () => { setListeningUI(false); showMicNote("マイクを使用できませんでした。テキスト入力をご利用ください。"); };
     rec.onend = () => setListeningUI(false);
@@ -438,9 +651,9 @@ async function onRecStopped(){
     const parsed = parseModelJSON(out);
     const t = String(parsed.transcript || "").trim();
     const ta = $("chatInput");
-    if (t && ta){
-      ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + t;
-      ta.focus();
+    if (t){
+      S.chatDraft = (S.chatDraft.trim() ? S.chatDraft.trim() + " " : "") + t;
+      if (ta){ ta.value = S.chatDraft; ta.focus(); }
     } else if (!t){
       showMicNote("音声を聞き取れませんでした。マイクに近づいて、もう一度お試しください。");
     }
@@ -527,7 +740,7 @@ async function runTurn(history){
 
 function startChat(){
   S.persona = buildPersona(S.digest, S.scenario, S.difficulty);
-  S.msgs = []; S.hints = null; S.chatError = null; S.summary = null;
+  S.msgs = []; S.hints = null; S.chatError = null; S.summary = null; S.chatDraft = "";
   setStage("chat");
   runTurn([]);
 }
@@ -537,7 +750,7 @@ function sendMessage(){
   const text = ta.value.trim();
   if (!text || S.sending || recording || transcribing) return;
   if (listening) toggleListening();
-  ta.value = ""; S.hints = null;
+  ta.value = ""; S.chatDraft = ""; S.hints = null;
   runTurn(S.msgs.concat([{ role:"user", text }]));
 }
 
@@ -622,16 +835,41 @@ function sanitizeSummary(sm){
 }
 
 async function genSummary(){
-  S.summary = null; S.summaryError = false; S.summaryLoading = true; render();
+  S.summary = null; S.summaryError = false; S.summaryErrorMsg = ""; S.summaryLoading = true; S.phraseNotice = ""; render();
+  let bestSummary = null;
   try{
     const transcript = S.msgs.map(m => (m.role === "ai" ? "Partner: " : "Learner: ") + m.text).join("\n");
     const prompt = "以下は日本人研究者の英会話練習の記録です（Partner=会話相手、Learner=練習者）。Learnerの英語を分析し、日本語でフィードバックしてください。\n---\n"
       + transcript + "\n---\n"
       + 'Respond ONLY with valid JSON with these fields: overall（総評、日本語2〜3文、励ましを含む）, strengths（良かった点の配列、日本語で2〜3個）, improvements（具体的な改善ポイントの配列、日本語で2〜3個）, phrases（この場面で使える英語表現の配列、各要素は english と japanese を持つオブジェクト、3〜4個）.\n'
       + '重要: strengths・improvements・phrases は必ず別々の配列に分けること。キー名（improvements, phrases, english, japanese 等）やテンプレート文を配列の要素として出力しないこと。';
-    const out = await callGemini([{ role:"user", parts:[{ text: prompt }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
-    S.summary = sanitizeSummary(parseModelJSON(out));
-  }catch(e){ S.summaryError = true; S.summaryErrorMsg = (e && e.message) ? e.message : ""; }
+    for (let attempt = 0; attempt < 2; attempt++){
+      const retryNote = attempt
+        ? "\n前回は一部の配列が欠けていました。4つの必須フィールドをすべて埋め、improvementsを2〜3個、phrasesを3〜4個必ず返してください。"
+        : "";
+      const out = await callGemini([{ role:"user", parts:[{ text: prompt + retryNote }] }], { temperature:0.5, schema: SCHEMA_SUMMARY });
+      let candidate = null;
+      try{ candidate = sanitizeSummary(parseModelJSON(out)); }catch(e){ if (attempt === 1) throw e; }
+      if (!candidate) continue;
+      if (bestSummary){
+        candidate = {
+          overall:candidate.overall || bestSummary.overall,
+          strengths:candidate.strengths.length ? candidate.strengths : bestSummary.strengths,
+          improvements:candidate.improvements.length ? candidate.improvements : bestSummary.improvements,
+          phrases:candidate.phrases.length ? candidate.phrases : bestSummary.phrases,
+        };
+      }
+      bestSummary = candidate;
+      const complete = !!candidate.overall && candidate.strengths.length >= 2
+        && candidate.improvements.length >= 2 && candidate.phrases.length >= 3;
+      if (complete){ S.summary = candidate; return; }
+    }
+    S.summary = bestSummary;
+    throw new Error("改善ポイントまたは使える表現を取得できませんでした");
+  }catch(e){
+    if (!S.summary && bestSummary) S.summary = bestSummary;
+    S.summaryError = true; S.summaryErrorMsg = (e && e.message) ? e.message : "";
+  }
   finally{ S.summaryLoading = false; render(); }
 }
 
@@ -646,7 +884,7 @@ function endSession(){
 
 function resetAll(){
   S.error = null; S.fileName = ""; S.pdfB64 = null; S.digest = null;
-  S.msgs = []; S.hints = null; S.summary = null; S.chatError = null; S.showDigest = false;
+  S.msgs = []; S.hints = null; S.summary = null; S.chatError = null; S.showDigest = false; S.chatDraft = "";
   setStage("upload");
 }
 
@@ -662,29 +900,34 @@ function render(){
     case "setup":     renderSetup(); break;
     case "chat":      renderChat(); break;
     case "summary":   renderSummary(); break;
+    case "phrasebook":renderPhraseBook(); break;
   }
 }
 
 // ── key setup screen ──
 function renderKey(){
   app.innerHTML = '<div class="wrap" style="padding-top:56px;padding-bottom:40px">'
-    + '<div class="mono eyebrow red">SETUP ─ GEMINI API</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +   '<div class="mono eyebrow red">SETUP ─ GEMINI API</div>' + phraseBookButton(false, false) + '</div>'
     + '<h1 class="display" style="font-size:26px;color:var(--navy-deep);margin-top:10px;line-height:1.4">APIキーを設定</h1>'
     + '<p style="font-size:13px;color:var(--sub);line-height:1.8;margin-top:14px">'
     + 'Gemini APIキーは <b style="color:var(--ink)">Google AI Studio</b>（aistudio.google.com/apikey）で無料で取得できます。'
     + '入力したキーは<b>この端末のブラウザ内にのみ保存</b>され、Googleとの通信以外には使われません。</p>'
     + '<div class="card" style="margin-top:20px;padding:18px">'
     +   '<div style="font-size:13px;font-weight:700">APIキー</div>'
-    +   '<input id="keyPaste" type="password" placeholder="APIキーを貼り付け" autocomplete="off" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
+    +   '<input id="keyPaste" type="password" value="' + esc(S.keyDraft) + '" placeholder="APIキーを貼り付け" autocomplete="off" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
     +   '<div style="font-size:13px;font-weight:700;margin-top:16px">モデル <span style="font-weight:400;font-size:11px;color:var(--sub)">（通常は変更不要）</span></div>'
-    +   '<input id="modelInput" type="text" value="' + esc(S.model) + '" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
+    +   '<input id="modelInput" type="text" value="' + esc(S.modelDraft || S.model) + '" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;background:var(--bg);outline:none">'
     +   '<button id="keySaveBtn" class="btn btn-stripe" style="margin-top:18px">保存して始める</button>'
     + '</div>'
     + (S.error ? '<div class="errbox" style="margin-top:14px">' + esc(S.error) + '</div>' : '')
     + '<p style="font-size:11px;color:var(--sub);margin-top:20px;line-height:1.7">共有端末で使う場合は、利用後にトップ画面の「キーを変更・削除」からキーを消去してください。</p>'
     + '</div>';
   $("keySaveBtn").addEventListener("click", applyKey);
+  $("keyPaste").addEventListener("input", e => { S.keyDraft = e.target.value; });
+  $("modelInput").addEventListener("input", e => { S.modelDraft = e.target.value; });
   $("keyPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") applyKey(); });
+  bindPhraseBookButton();
 }
 
 // ── upload ──
@@ -696,7 +939,8 @@ function renderUpload(){
       + '<div style="font-size:12px;color:var(--sub);line-height:1.7"><b style="color:var(--ink)">' + s.label + '</b>　' + s.desc + '</div></div>';
   }
   app.innerHTML = '<div class="wrap" style="padding-top:56px;padding-bottom:40px">'
-    + '<div class="mono eyebrow red">CONFERENCE ENGLISH TRAINER · GEMINI</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +   '<div class="mono eyebrow red">CONFERENCE ENGLISH TRAINER · GEMINI</div>' + phraseBookButton(false, false) + '</div>'
     + '<h1 class="display" style="font-size:32px;font-weight:700;color:var(--navy-deep);margin-top:12px;line-height:1.35">あなたの研究で、<br>英会話を練習する。</h1>'
     + '<p style="font-size:13px;color:var(--sub);line-height:1.9;margin-top:16px">論文や学会ポスターのPDFをアップロードすると、AIがその内容を読み込み、国際学会の質疑応答・ポスターセッション・懇親会を想定した英会話の相手になります。</p>'
     + '<div id="dropZone" style="margin-top:30px;border:2px dashed var(--line);background:var(--paper);border-radius:16px;padding:32px;text-align:center;cursor:pointer">'
@@ -718,6 +962,7 @@ function renderUpload(){
   dz.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
   inp.addEventListener("change", (e) => handleFile(e.target.files && e.target.files[0]));
   $("reKeyBtn").addEventListener("click", clearKey);
+  bindPhraseBookButton();
 }
 
 // ── analyzing ──
@@ -777,7 +1022,8 @@ function renderSetup(){
     }
     sampleQ += '</div></div>';
   }
-  app.innerHTML = '<div class="wrap" style="padding-top:32px;padding-bottom:40px">'
+  app.innerHTML = '<div class="wrap" style="padding-top:24px;padding-bottom:40px">'
+    + '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' + phraseBookButton(false, false) + '</div>'
     + '<div class="card" style="overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05)">'
     +   '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--navy);padding:8px 16px">'
     +     '<span class="mono" style="font-size:10px;color:#fff">SPEAKER</span>'
@@ -800,6 +1046,7 @@ function renderSetup(){
   document.querySelectorAll("[data-diff]").forEach(b => b.addEventListener("click", () => { S.difficulty = b.getAttribute("data-diff"); render(); }));
   $("startBtn").addEventListener("click", startChat);
   $("resetBtn").addEventListener("click", resetAll);
+  bindPhraseBookButton();
 }
 
 // ── chat ──
@@ -812,7 +1059,9 @@ function renderChat(){
     +     '<div style="min-width:0">'
     +       '<div class="mono" style="font-size:10px;color:#9FB0CC">' + sc.en + ' · ' + sc.partner + '</div>'
     +       '<div style="font-size:12px;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(S.digest && S.digest.title) + '</div></div>'
-    +     '<button id="endBtn" style="flex-shrink:0;font-size:12px;font-weight:700;background:var(--stripe);color:#fff;padding:7px 12px;border-radius:8px">終了する</button></div>'
+    +     '<div style="display:flex;gap:7px;align-items:center;flex-shrink:0">'
+    +       phraseBookButton(true, true)
+    +       '<button id="endBtn" style="font-size:12px;font-weight:700;background:var(--stripe);color:#fff;padding:8px 11px;border-radius:8px;white-space:nowrap">終了する</button></div></div>'
     +   '<div style="display:flex;gap:8px;margin-top:8px">'
     +     '<button id="fbToggle" class="pill' + (S.showFeedback ? " on" : "") + '">添削 ' + (S.showFeedback ? "ON" : "OFF") + '</button>'
     +     '<button id="spToggle" class="pill' + (S.autoSpeak ? " on" : "") + '">自動読み上げ ' + (S.autoSpeak ? "ON" : "OFF") + '</button></div>'
@@ -824,7 +1073,7 @@ function renderChat(){
     +     '<span id="micStatus" style="display:none;font-size:11px;font-weight:700;color:var(--stripe)"></span></div>'
     +   '<div id="micNote" style="display:' + (S.micNote ? "block" : "none") + ';font-size:11px;color:var(--sub);margin-top:4px">' + esc(S.micNote) + '</div>'
     +   '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px">'
-    +     '<textarea id="chatInput" rows="2" placeholder="英語で返答してみましょう…" style="flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;outline:none;color:var(--ink)"></textarea>'
+    +     '<textarea id="chatInput" rows="2" placeholder="英語で返答してみましょう…" style="flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;outline:none;color:var(--ink)">' + esc(S.chatDraft) + '</textarea>'
     +     (micOk ? '<button id="micBtn" class="iconbtn" style="background:#E7EAF0;color:var(--navy)">🎙</button>' : '')
     +     '<button id="sendBtn" class="iconbtn" style="background:var(--navy);color:#fff">➤</button></div>'
     + '</div></div></div>';
@@ -832,10 +1081,12 @@ function renderChat(){
   $("endBtn").addEventListener("click", endSession);
   $("fbToggle").addEventListener("click", () => { S.showFeedback = !S.showFeedback; render(); renderMsgs(); });
   $("spToggle").addEventListener("click", () => { S.autoSpeak = !S.autoSpeak; render(); renderMsgs(); });
+  bindPhraseBookButton();
   $("hintBtn").addEventListener("click", getHints);
   $("sendBtn").addEventListener("click", sendMessage);
   const mic = $("micBtn");
   if (mic) mic.addEventListener("click", toggleRecording);
+  $("chatInput").addEventListener("input", e => { S.chatDraft = e.target.value; });
   $("chatInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
   });
@@ -909,7 +1160,7 @@ function renderMsgs(){
   list.querySelectorAll(".hintbtn").forEach(b => b.addEventListener("click", () => {
     const h = S.hints && S.hints[Number(b.getAttribute("data-h"))];
     const ta = $("chatInput");
-    if (h && ta){ ta.value = h.english; ta.focus(); }
+    if (h && ta){ S.chatDraft = h.english; ta.value = S.chatDraft; ta.focus(); }
   }));
   const lbl = $("hintBtnLabel");
   if (lbl) lbl.textContent = S.hintLoading ? "ヒントを考え中…" : "答え方のヒント";
@@ -917,7 +1168,163 @@ function renderMsgs(){
   if (scr) scr.scrollTop = scr.scrollHeight;
 }
 
+// ── saved phrases / review ──
+function formatSavedDate(value){
+  const d = new Date(value);
+  if (!value || isNaN(d.getTime())) return "";
+  try{ return d.toLocaleDateString("ja-JP", { year:"numeric", month:"short", day:"numeric" }); }
+  catch(e){ return d.toISOString().slice(0, 10); }
+}
+
+function startPhraseReview(){
+  if (!S.savedPhrases.length) return;
+  S.reviewQueue = S.savedPhrases.slice().sort((a, b) => {
+    if (!a.lastReviewedAt && b.lastReviewedAt) return -1;
+    if (a.lastReviewedAt && !b.lastReviewedAt) return 1;
+    const aRate = a.reviewCount ? a.correctCount / a.reviewCount : 0;
+    const bRate = b.reviewCount ? b.correctCount / b.reviewCount : 0;
+    if (aRate !== bRate) return aRate - bRate;
+    return String(a.lastReviewedAt || a.createdAt).localeCompare(String(b.lastReviewedAt || b.createdAt));
+  }).map(p => p.id);
+  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.phraseView = "review"; S.phraseNotice = "";
+  renderPhraseBook();
+}
+
+function currentReviewPhrase(){
+  const id = S.reviewQueue[S.reviewIndex];
+  return S.savedPhrases.find(p => p.id === id) || null;
+}
+
+function recordPhraseReview(remembered){
+  const current = currentReviewPhrase();
+  if (!current) return;
+  const now = new Date().toISOString();
+  const next = S.savedPhrases.map(p => p.id === current.id ? Object.assign({}, p, {
+    reviewCount:(Number(p.reviewCount) || 0) + 1,
+    correctCount:(Number(p.correctCount) || 0) + (remembered ? 1 : 0),
+    lastReviewedAt:now,
+  }) : p);
+  if (!writeSavedPhrases(next)){ refreshPhraseBookBadges(); return; }
+  if (!remembered && !S.reviewRetried[current.id]){
+    S.reviewRetried[current.id] = true;
+    S.reviewQueue.push(current.id);
+  }
+  S.reviewIndex += 1; S.reviewReveal = false;
+  if (S.reviewIndex >= S.reviewQueue.length) S.phraseView = "done";
+  renderPhraseBook();
+}
+
+function renderPhraseBook(){
+  let content = "";
+  if (S.phraseView === "review"){
+    const p = currentReviewPhrase();
+    if (!p){ S.phraseView = "done"; renderPhraseBook(); return; }
+    content = '<div style="margin-top:22px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-bottom:10px">'
+      +   '<span>' + (S.reviewIndex + 1) + ' / ' + S.reviewQueue.length + '</span>'
+      +   '<button id="reviewCloseBtn" style="color:var(--navy);font-weight:700;padding:6px">一覧へ戻る</button></div>'
+      + '<div class="review-card">'
+      +   '<div class="mono eyebrow">JAPANESE ─ 英語で思い出す</div>'
+      +   '<div style="font-size:18px;font-weight:700;line-height:1.7;margin-top:18px">'
+      +     esc(p.japanese || "この表現の英語を思い出してみましょう") + '</div>'
+      +   (S.reviewReveal
+        ? '<div style="border-top:1px solid var(--line);margin-top:22px;padding-top:22px">'
+          + '<div lang="en" style="font-size:20px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
+          + '<button id="reviewSpeakBtn" class="small-action" style="margin-top:14px">🔊 読み上げる</button></div>'
+        : '<button id="reviewRevealBtn" class="btn btn-navy" style="margin-top:26px">英語を表示する</button>')
+      + '</div>'
+      + (S.reviewReveal ? '<div style="display:flex;gap:10px;margin-top:14px">'
+        + '<button id="reviewAgainBtn" class="btn btn-ghost">まだ不安</button>'
+        + '<button id="reviewGoodBtn" class="btn btn-stripe">覚えた</button></div>' : '')
+      + '</div>';
+  } else if (S.phraseView === "done"){
+    content = '<div class="card" style="padding:28px 20px;text-align:center;margin-top:24px">'
+      + '<div style="font-size:34px">✓</div>'
+      + '<h2 class="display" style="font-size:21px;color:var(--navy-deep);margin-top:10px">今回の復習は完了です</h2>'
+      + '<p style="font-size:13px;color:var(--sub);margin-top:8px">' + S.reviewQueue.length + '回、表現を復習しました。</p>'
+      + '<button id="reviewDoneBtn" class="btn btn-navy" style="margin-top:22px">表現一覧へ戻る</button></div>';
+  } else {
+    let rows = "";
+    S.savedPhrases.forEach(p => {
+      const meta = [p.sourceTitle, formatSavedDate(p.createdAt)].filter(Boolean).join(" · ");
+      rows += '<div class="card" style="padding:14px 16px;margin-top:10px">'
+        + '<div lang="en" style="font-size:15px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
+        + (p.japanese ? '<div style="font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px">' + esc(p.japanese) + '</div>' : '')
+        + (meta ? '<div style="font-size:10px;color:#8A909B;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(meta) + '</div>' : '')
+        + '<div style="display:flex;justify-content:flex-end;gap:7px;margin-top:10px">'
+        +   '<button class="savedPhraseSpeak small-action" data-id="' + esc(p.id) + '">🔊 読む</button>'
+        +   '<button class="savedPhraseDelete small-action" data-id="' + esc(p.id) + '" style="color:var(--red-ink)">削除</button></div></div>';
+    });
+    content = '<div class="card" style="padding:16px;margin-top:20px">'
+      + '<div class="mono eyebrow">ADD ─ 表現を追加</div>'
+      + '<input id="manualEnglish" type="text" maxlength="800" placeholder="English expression" style="margin-top:10px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
+      + '<input id="manualJapanese" type="text" maxlength="800" placeholder="日本語訳（任意）" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
+      + '<button id="manualPhraseSave" class="btn btn-navy" style="margin-top:10px">表現帳に追加する</button></div>'
+      + (S.savedPhrases.length
+        ? '<button id="startReviewBtn" class="btn btn-stripe" style="margin-top:8px">復習をはじめる（' + S.savedPhrases.length + '件）</button>' + rows
+        : '<div class="card" style="padding:28px 20px;text-align:center;margin-top:8px"><div style="font-size:30px">📚</div>'
+          + '<div style="font-weight:700;color:var(--navy-deep);margin-top:10px">保存した表現はまだありません</div>'
+          + '<p class="phrase-empty">セッションレポートの「使える表現」から保存するか、上の入力欄から追加できます。</p></div>');
+  }
+
+  app.innerHTML = '<div class="wrap safe-bottom" style="padding-top:24px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
+    +   '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
+    + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
+    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">この端末のブラウザ内に保存されます。APIキーを削除しても表現は残ります。</p>'
+    + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
+    + content + '</div>';
+
+  $("phraseBackBtn").addEventListener("click", closePhraseBook);
+  const manualSave = $("manualPhraseSave");
+  if (manualSave) manualSave.addEventListener("click", () => {
+    const result = savePhraseToBook({ english:$("manualEnglish").value, japanese:$("manualJapanese").value }, {});
+    if (result === "invalid" || result === "failed"){
+      refreshPhraseBookBadges(); if (result === "invalid") $("manualEnglish").focus();
+    } else renderPhraseBook();
+  });
+  const manualJa = $("manualJapanese");
+  if (manualJa) manualJa.addEventListener("keydown", e => { if (e.key === "Enter") manualSave.click(); });
+  document.querySelectorAll(".savedPhraseSpeak").forEach(b => b.addEventListener("click", () => {
+    const p = S.savedPhrases.find(x => x.id === b.getAttribute("data-id"));
+    if (p) speak(p.english);
+  }));
+  document.querySelectorAll(".savedPhraseDelete").forEach(b => b.addEventListener("click", () => {
+    const p = S.savedPhrases.find(x => x.id === b.getAttribute("data-id"));
+    if (p && window.confirm('「' + p.english + '」を表現帳から削除しますか？')){
+      removeSavedPhrase(p.id); renderPhraseBook();
+    }
+  }));
+  const start = $("startReviewBtn"); if (start) start.addEventListener("click", startPhraseReview);
+  const reveal = $("reviewRevealBtn"); if (reveal) reveal.addEventListener("click", () => { S.reviewReveal = true; renderPhraseBook(); });
+  const reviewSpeak = $("reviewSpeakBtn"); if (reviewSpeak) reviewSpeak.addEventListener("click", () => { const p = currentReviewPhrase(); if (p) speak(p.english); });
+  const reviewAgain = $("reviewAgainBtn"); if (reviewAgain) reviewAgain.addEventListener("click", () => recordPhraseReview(false));
+  const reviewGood = $("reviewGoodBtn"); if (reviewGood) reviewGood.addEventListener("click", () => recordPhraseReview(true));
+  const reviewClose = $("reviewCloseBtn"); if (reviewClose) reviewClose.addEventListener("click", () => { S.phraseView = "list"; renderPhraseBook(); });
+  const reviewDone = $("reviewDoneBtn"); if (reviewDone) reviewDone.addEventListener("click", () => { S.phraseView = "list"; renderPhraseBook(); });
+}
+
 // ── summary ──
+function syncSummaryPhraseControls(){
+  const phrases = (S.summary && S.summary.phrases) || [];
+  document.querySelectorAll(".phraseSave").forEach(b => {
+    const p = phrases[Number(b.getAttribute("data-p"))];
+    const saved = p && isPhraseSaved(p.english);
+    const enrich = p && phraseNeedsTranslation(p);
+    const complete = saved && !enrich;
+    b.textContent = complete ? "✓ 保存済み" : (enrich ? "＋ 訳を追加" : "＋ 保存");
+    b.classList.toggle("saved", !!complete); b.disabled = !!complete;
+  });
+  const all = $("saveAllPhrases");
+  if (all){
+    const done = phrases.length > 0 && phrases.every(p => isPhraseSaved(p.english) && !phraseNeedsTranslation(p));
+    all.textContent = done ? "✓ すべて保存済み" : "まとめて保存";
+    all.classList.toggle("saved", done); all.disabled = done;
+  }
+  refreshPhraseBookBadges();
+}
+
 function renderSummary(){
   const userMsgs = S.msgs.filter(m => m.role === "user").length;
   let issueCount = 0;
@@ -928,55 +1335,82 @@ function renderSummary(){
       if (fb && fb.hasIssues) issueCount += 1;
     }
   });
-  let body = "";
+
+  const sm = S.summary || { overall:"", strengths:[], improvements:[], phrases:[] };
+  let status = "";
   if (S.summaryLoading){
-    body = '<div style="margin-top:32px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub)">'
+    status = '<div style="margin-top:24px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub)">'
       + '<span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span><span class="dot" style="background:var(--navy)"></span>'
       + '<span style="margin-left:4px">フィードバックを作成しています…</span></div>';
   } else if (S.summaryError){
-    body = '<div style="margin-top:32px"><p style="font-size:13px;color:var(--red-ink)">フィードバックの作成に失敗しました。' + (S.summaryErrorMsg ? '<br><span style="font-size:11px">理由: ' + esc(S.summaryErrorMsg) + '</span>' : '') + '</p>'
-      + '<button id="reSummaryBtn" class="btn btn-navy" style="width:auto;padding:10px 18px;font-size:13px;margin-top:12px">もう一度作成する</button></div>';
-  } else if (S.summary){
-    const sm = S.summary;
-    let strengths = "", improvements = "", phrases = "";
-    (sm.strengths || []).forEach(s => { strengths += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
-    (sm.improvements || []).forEach(s => { improvements += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
-    (sm.phrases || []).forEach((p, i) => {
-      phrases += '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px">'
-        + '<button class="phraseSpeak" data-p="' + i + '" style="flex-shrink:0;background:#E7EAF0;color:var(--navy);border-radius:6px;padding:3px 6px;font-size:12px;margin-top:2px">🔊</button>'
-        + '<div><div style="font-size:14px;font-weight:700">' + esc(p.english) + '</div>'
-        + '<div style="font-size:12px;color:var(--sub);margin-top:2px">' + esc(p.japanese) + '</div></div></div>';
-    });
-    body = '<div style="margin-top:24px">'
-      + '<div class="card" style="padding:16px;font-size:14px;line-height:1.8">' + esc(sm.overall) + '</div>'
-      + '<div style="background:var(--green-bg);border:1px solid #BCD9C6;border-radius:16px;padding:16px;margin-top:14px">'
-      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--green)">GOOD ─ 良かった点</div>'
-      +   '<ul style="list-style:none;font-size:13px;color:#1F5236;margin-top:4px">' + strengths + '</ul></div>'
-      + '<div style="background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:16px;padding:16px;margin-top:14px">'
-      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--amber-ink)">NEXT ─ 改善ポイント</div>'
-      +   '<ul style="list-style:none;font-size:13px;color:var(--amber-ink);margin-top:4px">' + improvements + '</ul></div>'
-      + '<div class="card" style="padding:16px;margin-top:14px">'
-      +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--navy)">PHRASES ─ 使える表現</div>' + phrases + '</div>'
-      + '</div>';
+    status = '<div class="errbox" style="margin-top:24px">フィードバックの作成に失敗しました。'
+      + (S.summaryErrorMsg ? '<br><span style="font-size:11px">理由: ' + esc(S.summaryErrorMsg) + '</span>' : '')
+      + '<button id="reSummaryBtn" class="small-action" style="display:flex;margin-top:10px;border-color:var(--red-line)">もう一度作成する</button></div>';
   }
-  app.innerHTML = '<div class="wrap" style="padding-top:32px;padding-bottom:40px">'
-    + '<div class="mono eyebrow red">SESSION REPORT</div>'
+
+  const emptyMessage = S.summaryLoading ? "作成中…" : (S.summaryError ? "取得できませんでした。上のボタンから再作成できます。" : "該当項目を取得できませんでした。");
+  let strengths = "", improvements = "", phrases = "";
+  (sm.strengths || []).forEach(s => { strengths += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
+  (sm.improvements || []).forEach(s => { improvements += '<li style="margin-top:6px">・' + esc(s) + '</li>'; });
+  if (!strengths) strengths = '<li class="phrase-empty">' + esc(emptyMessage) + '</li>';
+  if (!improvements) improvements = '<li class="phrase-empty" style="color:var(--amber-ink)">' + esc(emptyMessage) + '</li>';
+  (sm.phrases || []).forEach((p, i) => {
+    const saved = isPhraseSaved(p.english);
+    const enrich = phraseNeedsTranslation(p);
+    const complete = saved && !enrich;
+    phrases += '<div class="phrase-row">'
+      + '<div class="phrase-copy"><div lang="en" style="font-size:14px;font-weight:700;line-height:1.55">' + esc(p.english) + '</div>'
+      + '<div style="font-size:12px;color:var(--sub);margin-top:2px;line-height:1.55">' + esc(p.japanese) + '</div></div>'
+      + '<div class="phrase-actions">'
+      +   '<button class="phraseSpeak small-action" data-p="' + i + '" aria-label="英語表現を読み上げる">🔊</button>'
+      +   '<button class="phraseSave small-action' + (complete ? ' saved' : '') + '" data-p="' + i + '"' + (complete ? ' disabled' : '') + '>' + (complete ? '✓ 保存済み' : (enrich ? '＋ 訳を追加' : '＋ 保存')) + '</button>'
+      + '</div></div>';
+  });
+  if (!phrases) phrases = '<div class="phrase-empty">' + esc(emptyMessage) + '</div>';
+
+  const phraseList = sm.phrases || [];
+  const allSaved = phraseList.length > 0 && phraseList.every(p => isPhraseSaved(p.english) && !phraseNeedsTranslation(p));
+  const body = '<div style="margin-top:14px">'
+    + (sm.overall ? '<div class="card" style="padding:16px;font-size:14px;line-height:1.8">' + esc(sm.overall) + '</div>' : '')
+    + '<div id="summaryStrengths" style="background:var(--green-bg);border:1px solid #BCD9C6;border-radius:16px;padding:16px;margin-top:14px">'
+    +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--green)">GOOD ─ 良かった点</div>'
+    +   '<ul style="list-style:none;font-size:13px;color:#1F5236;margin-top:4px">' + strengths + '</ul></div>'
+    + '<div id="summaryImprovements" style="background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:16px;padding:16px;margin-top:14px">'
+    +   '<div class="mono" style="font-size:10px;font-weight:500;color:var(--amber-ink)">NEXT ─ 改善ポイント</div>'
+    +   '<ul style="list-style:none;font-size:13px;color:var(--amber-ink);margin-top:4px">' + improvements + '</ul></div>'
+    + '<div id="summaryPhrases" class="card" style="padding:16px;margin-top:14px">'
+    +   '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'
+    +     '<div class="mono" style="font-size:10px;font-weight:500;color:var(--navy)">PHRASES ─ 使える表現</div>'
+    +     (phraseList.length ? '<button id="saveAllPhrases" class="small-action' + (allSaved ? ' saved' : '') + '"' + (allSaved ? ' disabled' : '') + '>' + (allSaved ? '✓ すべて保存済み' : 'まとめて保存') + '</button>' : '')
+    +   '</div>' + phrases + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div></div>'
+    + '</div>';
+
+  app.innerHTML = '<div class="wrap" style="padding-top:24px;padding-bottom:40px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+    +   '<div class="mono eyebrow red">SESSION REPORT</div>' + phraseBookButton(false, false) + '</div>'
     + '<h2 class="display" style="font-size:24px;font-weight:700;color:var(--navy-deep);margin-top:8px">おつかれさまでした！</h2>'
     + '<div style="display:flex;gap:8px;margin-top:12px">'
     +   '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub)">発話 <b style="color:var(--ink)">' + userMsgs + '</b> 回</div>'
     +   '<div style="font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--sub)">自然な英語 <b style="color:var(--green)">' + Math.max(userMsgs - issueCount, 0) + '</b> / ' + userMsgs + '</div></div>'
-    + body
+    + status + body
     + '<div style="margin-top:32px">'
     +   '<button id="againBtn" class="btn btn-navy">⟲ 同じ資料でもう一度練習する</button>'
     +   '<button id="newPdfBtn" class="btn btn-ghost" style="margin-top:10px">別のPDFで練習する</button></div>'
     + '</div>';
 
-  const rs = $("reSummaryBtn");
-  if (rs) rs.addEventListener("click", genSummary);
+  const rs = $("reSummaryBtn"); if (rs) rs.addEventListener("click", genSummary);
   document.querySelectorAll(".phraseSpeak").forEach(b => b.addEventListener("click", () => {
     const p = S.summary && S.summary.phrases && S.summary.phrases[Number(b.getAttribute("data-p"))];
     if (p) speak(p.english);
   }));
+  document.querySelectorAll(".phraseSave").forEach(b => b.addEventListener("click", () => {
+    const p = S.summary && S.summary.phrases && S.summary.phrases[Number(b.getAttribute("data-p"))];
+    if (p) savePhraseToBook(p, { sourceTitle:S.digest && S.digest.title, scenario:S.scenario });
+    syncSummaryPhraseControls();
+  }));
+  const saveAll = $("saveAllPhrases");
+  if (saveAll) saveAll.addEventListener("click", () => { saveSummaryPhrases(sm.phrases); syncSummaryPhraseControls(); });
+  bindPhraseBookButton();
   $("againBtn").addEventListener("click", () => { S.msgs = []; S.summary = null; setStage("setup"); });
   $("newPdfBtn").addEventListener("click", resetAll);
 }
