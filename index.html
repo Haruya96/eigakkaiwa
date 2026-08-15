@@ -370,20 +370,26 @@ async function exportPhraseBackup(){
     if (blob.size > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
     parsePhraseBackup(json);
 
-    if (typeof File !== "undefined" && navigator.share && navigator.canShare){
+    if (navigator.share){
       try{
-        const candidates = [
-          new File([json], fileName, { type:"application/json" }),
-          new File([json], fileName.replace(/\.json$/i, ".txt"), { type:"text/plain" }),
-        ];
-        const shareFile = candidates.find(file => {
-          try{ return navigator.canShare({ files:[file] }); }catch(e){ return false; }
-        });
-        if (shareFile){
-          await navigator.share({ files:[shareFile], title:"研究英会話・使える表現帳" });
-          S.phraseNotice = "選択した共有先アプリへバックアップを送りました。";
-          return;
+        const title = "研究英会話・使える表現帳";
+        let shareData = { title:title, text:json };
+        if (typeof File !== "undefined"){
+          const shareFile = new File(
+            [json], fileName.replace(/\.json$/i, ".txt"), { type:"text/plain" }
+          );
+          let canShareFile = false;
+          try{
+            canShareFile = typeof navigator.canShare === "function"
+              && navigator.canShare({ files:[shareFile] });
+          }catch(e){}
+          if (canShareFile) shareData = { files:[shareFile], title:title };
         }
+        await navigator.share(shareData);
+        S.phraseNotice = shareData.files
+          ? "選択した共有先アプリへTXTバックアップを送りました。"
+          : "選択した共有先アプリへバックアップ内容を送りました。";
+        return;
       }catch(e){
         if (e && e.name === "AbortError"){
           S.phraseNotice = "バックアップの保存をキャンセルしました。";
@@ -1451,7 +1457,7 @@ function recordPhraseReview(remembered){
 function phraseBackupCardHtml(){
   return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
     + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">「共有先アプリを選ぶ」を押すとAndroidの共有画面が開きます。<b style="color:var(--navy)">Google Drive</b>など、保存したいアプリを選んでください。端末へ自動ダウンロードはしません。</p>'
+    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">「共有先アプリを選ぶ」を押すとAndroidの共有画面が開きます。<b style="color:var(--navy)">Google Drive</b>など、保存したいアプリを選んでください。Driveには読み込み可能なTXTバックアップとして保存され、端末へ自動ダウンロードはしません。</p>'
     + '<div class="backup-actions">'
     + '<button id="phraseBackupSaveBtn" class="btn btn-navy">共有先アプリを選ぶ</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
