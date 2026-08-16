@@ -87,17 +87,30 @@ textarea,input{font-family:inherit}
 .mastery-option.unsure.on{border-color:var(--amber-line);background:var(--amber-bg);color:#7A4B0F}
 .mastery-option.mastered.on{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
 .mastery-option:focus-within{outline:3px solid rgba(49,93,155,.2);outline-offset:1px}
-.practice-card{border:1px solid #C8D6EC;background:#F7FAFF;border-radius:16px;padding:15px;margin-top:8px}
-.mastery-counts{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--sub);margin-top:5px}
-.practice-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.practice-actions .btn{font-size:12px;padding:11px 8px}
+.practice-card{border:1px solid #C8D6EC;background:#F7FAFF;border-radius:18px;padding:17px;margin-top:8px}
+.practice-scope-options{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
+.practice-scope-option{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;min-height:88px;padding:11px 8px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--sub);font-weight:700;line-height:1.35;text-align:center}
+.practice-scope-option.on{border-color:var(--navy);background:var(--navy);color:#fff}
+.practice-scope-option:focus-visible,.phrase-filter:focus-visible,.practice-start:focus-visible{outline:3px solid rgba(49,93,155,.25);outline-offset:2px}
+.practice-scope-title{display:block;font-size:13px}.practice-scope-count{display:block;font-size:16px;margin-top:4px}
+.practice-start{margin-top:11px;background:var(--stripe);color:#fff;min-height:54px;font-size:15px;border-radius:14px}
+.phrase-filter-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px}
+.phrase-filter-bar::-webkit-scrollbar{display:none}
+.phrase-filter{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:46px;padding:7px 3px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--sub);font-size:11px;font-weight:700;white-space:nowrap}
+.phrase-filter.on{border-color:var(--navy);background:var(--navy);color:#fff}
+.phrase-filter-empty{padding:22px 16px;text-align:center;color:var(--sub);font-size:12px;line-height:1.7}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media (max-width:420px){
   .phrase-row{flex-wrap:wrap}
   .phrase-actions{width:100%;justify-content:flex-end}
   .backup-actions{grid-template-columns:1fr}
 }
-@media (max-width:340px){.mastery-options,.practice-actions{grid-template-columns:1fr}}
+@media (max-width:340px){
+  .mastery-options{grid-template-columns:1fr}
+  .phrase-filter-bar{display:flex;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+  .phrase-filter{flex:0 0 78px;font-size:11px}
+}
 </style>
 </head>
 <body>
@@ -149,6 +162,7 @@ const S = {
   savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
   manualEnglishDraft:"", manualJapaneseDraft:"",
   reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{}, reviewMode:"active",
+  practiceScope:"active", phraseListFilter:"all",
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
 
@@ -1506,6 +1520,15 @@ function phraseMasteryCounts(){
   return counts;
 }
 
+function phraseMatchesListFilter(phrase, filter){
+  filter = filter === "unset" || filter === "unsure" || filter === "mastered" ? filter : "all";
+  return filter === "all" || safeMasteryStatus(phrase && phrase.masteryStatus) === filter;
+}
+
+function practiceScopeCount(counts, scope){
+  return scope === "unsure" ? counts.unsure : counts.unset + counts.unsure;
+}
+
 function setPhraseMasteryStatus(id, status){
   if (status !== "unset" && status !== "unsure" && status !== "mastered") return false;
   const index = S.savedPhrases.findIndex(p => p.id === id);
@@ -1601,22 +1624,56 @@ function bindPhraseBackupControls(){
 }
 
 function syncPhraseMasteryControls(){
-  const counts = phraseMasteryCounts(), activeCount = counts.unset + counts.unsure;
+  const counts = phraseMasteryCounts();
+  const phrasesById = new Map(S.savedPhrases.map(p => [p.id, p]));
+  if (S.practiceScope !== "unsure") S.practiceScope = "active";
+  if (["all","unset","unsure","mastered"].indexOf(S.phraseListFilter) === -1) S.phraseListFilter = "all";
+  const activeCount = counts.unset + counts.unsure;
   const unsetCount = $("masteryUnsetCount"), unsureCount = $("masteryUnsureCount"), masteredCount = $("masteryMasteredCount");
   if (unsetCount) unsetCount.textContent = counts.unset;
   if (unsureCount) unsureCount.textContent = counts.unsure;
   if (masteredCount) masteredCount.textContent = counts.mastered;
   document.querySelectorAll(".phraseMastery").forEach(input => {
-    const phrase = S.savedPhrases.find(p => p.id === input.getAttribute("data-id"));
+    const phrase = phrasesById.get(input.getAttribute("data-id"));
     const checked = !!phrase && safeMasteryStatus(phrase.masteryStatus) === input.getAttribute("data-status");
     input.checked = checked;
     const label = input.closest && input.closest(".mastery-option");
     if (label) label.classList.toggle("on", checked);
   });
-  const active = $("startReviewBtn");
-  if (active){ active.disabled = activeCount === 0; active.textContent = "「覚えた」以外を練習（" + activeCount + "件）"; }
-  const unsure = $("startUnsureReviewBtn");
-  if (unsure){ unsure.disabled = counts.unsure === 0; unsure.textContent = "「まだ不安」だけ練習（" + counts.unsure + "件）"; }
+  const activeScope = $("practiceActiveBtn"), unsureScope = $("practiceUnsureBtn");
+  [[activeScope, "active"], [unsureScope, "unsure"]].forEach(pair => {
+    if (!pair[0]) return;
+    const selected = S.practiceScope === pair[1];
+    pair[0].classList.toggle("on", selected); pair[0].setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+  const activeScopeCount = $("practiceActiveCount"), unsureScopeCount = $("practiceUnsureCount");
+  if (activeScopeCount) activeScopeCount.textContent = activeCount + "件";
+  if (unsureScopeCount) unsureScopeCount.textContent = counts.unsure + "件";
+  const selectedCount = practiceScopeCount(counts, S.practiceScope);
+  const start = $("startReviewBtn");
+  if (start){
+    start.disabled = selectedCount === 0;
+    start.textContent = selectedCount
+      ? "選んだ表現を練習する（" + selectedCount + "件）" : "練習対象の表現はありません";
+  }
+  const filterCounts = { all:S.savedPhrases.length, unset:counts.unset, unsure:counts.unsure, mastered:counts.mastered };
+  document.querySelectorAll(".phrase-filter").forEach(button => {
+    const filter = button.getAttribute("data-filter");
+    const selected = filter === S.phraseListFilter;
+    button.classList.toggle("on", selected); button.setAttribute("aria-pressed", selected ? "true" : "false");
+    const count = button.querySelector && button.querySelector(".phrase-filter-count");
+    if (count) count.textContent = filterCounts[filter] == null ? 0 : filterCounts[filter];
+  });
+  let visible = 0;
+  document.querySelectorAll(".savedPhraseCard").forEach(card => {
+    const phrase = phrasesById.get(card.getAttribute("data-id"));
+    const show = !!phrase && phraseMatchesListFilter(phrase, S.phraseListFilter);
+    card.hidden = !show; if (show) visible += 1;
+  });
+  const empty = $("phraseFilterEmpty");
+  if (empty) empty.hidden = visible !== 0;
+  const filterStatus = $("phraseFilterStatus");
+  if (filterStatus) filterStatus.textContent = visible + "件の表現を表示しています。";
 }
 
 function renderPhraseBook(){
@@ -1638,7 +1695,7 @@ function renderPhraseBook(){
           + '<button id="reviewSpeakBtn" class="small-action" style="margin-top:14px">🔊 読み上げる</button></div>'
         : '<button id="reviewRevealBtn" class="btn btn-navy" style="margin-top:26px">英語を表示する</button>')
       + '</div>'
-      + (S.reviewReveal ? '<div style="display:flex;gap:10px;margin-top:14px">'
+      + (S.reviewReveal ? '<p style="font-size:11px;color:var(--sub);text-align:center;margin-top:13px">最初はどちらも未選択です。</p><div style="display:flex;gap:10px;margin-top:7px">'
         + '<button id="reviewAgainBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>まだ不安</button>'
         + '<button id="reviewGoodBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>覚えた</button></div>' : '')
       + '</div>';
@@ -1651,12 +1708,27 @@ function renderPhraseBook(){
   } else {
     const masteryCounts = phraseMasteryCounts();
     const activeCount = masteryCounts.unset + masteryCounts.unsure;
+    if (S.practiceScope !== "unsure") S.practiceScope = "active";
+    if (["all","unset","unsure","mastered"].indexOf(S.phraseListFilter) === -1) S.phraseListFilter = "all";
+    const selectedPracticeCount = practiceScopeCount(masteryCounts, S.practiceScope);
+    const filterDefs = [
+      { key:"all", label:"すべて", count:S.savedPhrases.length },
+      { key:"unset", label:"未選択", count:masteryCounts.unset, id:"masteryUnsetCount" },
+      { key:"unsure", label:"まだ不安", count:masteryCounts.unsure, id:"masteryUnsureCount" },
+      { key:"mastered", label:"覚えた", count:masteryCounts.mastered, id:"masteryMasteredCount" },
+    ];
+    const filterBar = '<div class="phrase-filter-bar" role="group" aria-label="表現一覧の表示を絞り込む">'
+      + filterDefs.map(item => '<button type="button" class="phrase-filter' + (S.phraseListFilter === item.key ? ' on' : '')
+        + '" data-filter="' + item.key + '" aria-pressed="' + (S.phraseListFilter === item.key ? 'true' : 'false') + '">'
+        + '<span>' + item.label + '</span><b' + (item.id ? ' id="' + item.id + '"' : '')
+        + ' class="phrase-filter-count">' + item.count + '</b></button>').join("") + '</div>';
     let rows = "";
     S.savedPhrases.forEach((p, phraseIndex) => {
       const meta = [p.sourceTitle, formatSavedDate(p.createdAt)].filter(Boolean).join(" · ");
       const masteryStatus = safeMasteryStatus(p.masteryStatus);
       const unsureId = "phraseUnsure_" + phraseIndex, masteredId = "phraseMastered_" + phraseIndex;
-      rows += '<div class="card" style="padding:14px 16px;margin-top:10px">'
+      rows += '<div class="card savedPhraseCard" data-id="' + esc(p.id) + '"'
+        + (phraseMatchesListFilter(p, S.phraseListFilter) ? '' : ' hidden') + ' style="padding:14px 16px;margin-top:10px">'
         + '<div lang="en" style="font-size:15px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
         + (p.japanese ? '<div style="font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px">' + esc(p.japanese) + '</div>' : '')
         + (meta ? '<div style="font-size:10px;color:#8A909B;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(meta) + '</div>' : '')
@@ -1677,15 +1749,21 @@ function renderPhraseBook(){
       + '<button id="manualPhraseSave" class="btn btn-navy" style="margin-top:10px">表現帳に追加する</button></div>'
       + (S.savedPhrases.length
         ? '<section class="practice-card" aria-labelledby="practiceHeading">'
-          + '<div id="practiceHeading" class="mono" style="font-size:10px;color:#315D9B">PRACTICE ─ 練習する表現を選ぶ</div>'
-          + '<div class="mastery-counts"><span>未設定 <b id="masteryUnsetCount">' + masteryCounts.unset + '</b></span>'
-          + '<span>まだ不安 <b id="masteryUnsureCount">' + masteryCounts.unsure + '</b></span>'
-          + '<span>覚えた <b id="masteryMasteredCount">' + masteryCounts.mastered + '</b></span></div>'
-          + '<p style="font-size:11px;line-height:1.6;color:var(--sub);margin-top:7px">新しい表現はどちらにもチェックされません。「覚えた」は通常の練習から外れます。</p>'
-          + '<div class="practice-actions">'
-          + '<button id="startReviewBtn" class="btn btn-navy"' + (activeCount ? '' : ' disabled') + '>「覚えた」以外を練習（' + activeCount + '件）</button>'
-          + '<button id="startUnsureReviewBtn" class="btn btn-ghost"' + (masteryCounts.unsure ? '' : ' disabled') + '>「まだ不安」だけ練習（' + masteryCounts.unsure + '件）</button>'
-          + '</div></section>' + rows
+          + '<div id="practiceHeading" class="mono" style="font-size:10px;color:#315D9B">PRACTICE ─ 練習対象</div>'
+          + '<p id="practiceHelp" style="font-size:12px;line-height:1.75;color:var(--sub);margin-top:10px">「覚えた」は練習から自動で外れます。練習したい範囲を選んでください。</p>'
+          + '<div class="practice-scope-options" role="group" aria-label="練習する表現の範囲">'
+          + '<button type="button" id="practiceActiveBtn" class="practice-scope-option' + (S.practiceScope === "active" ? ' on' : '')
+          + '" aria-pressed="' + (S.practiceScope === "active" ? 'true' : 'false') + '"><span class="practice-scope-title">未選択＋まだ不安</span>'
+          + '<b id="practiceActiveCount" class="practice-scope-count">' + activeCount + '件</b></button>'
+          + '<button type="button" id="practiceUnsureBtn" class="practice-scope-option' + (S.practiceScope === "unsure" ? ' on' : '')
+          + '" aria-pressed="' + (S.practiceScope === "unsure" ? 'true' : 'false') + '"><span class="practice-scope-title">まだ不安だけ</span>'
+          + '<b id="practiceUnsureCount" class="practice-scope-count">' + masteryCounts.unsure + '件</b></button></div>'
+          + '<button type="button" id="startReviewBtn" class="btn practice-start" aria-describedby="practiceHelp"' + (selectedPracticeCount ? '' : ' disabled')
+          + '>' + (selectedPracticeCount ? '選んだ表現を練習する（' + selectedPracticeCount + '件）' : '練習対象の表現はありません') + '</button></section>'
+          + filterBar
+          + '<p id="phraseFilterStatus" class="sr-only" aria-live="polite"></p>'
+          + '<div id="phraseFilterEmpty" class="card phrase-filter-empty"' + (filterDefs.find(item => item.key === S.phraseListFilter).count ? ' hidden' : '')
+          + '><b style="color:var(--navy-deep)">この状態の表現はありません</b><br>上の絞り込みを変更すると、ほかの表現を表示できます。</div>' + rows
         : '<div class="card" style="padding:28px 20px;text-align:center;margin-top:8px"><div style="font-size:30px">📚</div>'
           + '<div style="font-weight:700;color:var(--navy-deep);margin-top:10px">保存した表現はまだありません</div>'
           + '<p class="phrase-empty">セッションレポートの「使える表現」から保存するか、上の入力欄から追加できます。</p></div>');
@@ -1697,7 +1775,8 @@ function renderPhraseBook(){
     +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
     +   '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
     + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
-    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">この端末のブラウザ内に保存されます。APIキーを削除しても表現は残ります。</p>'
+    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">新しく保存した表現は未選択です。「まだ不安」または「覚えた」を選べます。同じ状態をもう一度押すと未選択に戻ります。</p>'
+    + '<p style="font-size:11px;color:#7B8390;line-height:1.65;margin-top:4px">この端末のブラウザ内に保存され、APIキーを削除しても表現は残ります。</p>'
     + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
     + backupCard + content + '</div>';
 
@@ -1731,8 +1810,14 @@ function renderPhraseBook(){
     setPhraseMasteryStatus(input.getAttribute("data-id"), input.checked ? status : "unset");
     syncPhraseMasteryControls(); refreshPhraseBookBadges();
   }));
-  const start = $("startReviewBtn"); if (start) start.addEventListener("click", () => startPhraseReview("active"));
-  const startUnsure = $("startUnsureReviewBtn"); if (startUnsure) startUnsure.addEventListener("click", () => startPhraseReview("unsure"));
+  const practiceActive = $("practiceActiveBtn");
+  if (practiceActive) practiceActive.addEventListener("click", () => { S.practiceScope = "active"; syncPhraseMasteryControls(); });
+  const practiceUnsure = $("practiceUnsureBtn");
+  if (practiceUnsure) practiceUnsure.addEventListener("click", () => { S.practiceScope = "unsure"; syncPhraseMasteryControls(); });
+  const start = $("startReviewBtn"); if (start) start.addEventListener("click", () => startPhraseReview(S.practiceScope));
+  document.querySelectorAll(".phrase-filter").forEach(button => button.addEventListener("click", () => {
+    S.phraseListFilter = button.getAttribute("data-filter"); syncPhraseMasteryControls();
+  }));
   const reveal = $("reviewRevealBtn"); if (reveal) reveal.addEventListener("click", () => { S.reviewReveal = true; renderPhraseBook(); });
   const reviewSpeak = $("reviewSpeakBtn"); if (reviewSpeak) reviewSpeak.addEventListener("click", () => { const p = currentReviewPhrase(); if (p) speak(p.english); });
   const reviewAgain = $("reviewAgainBtn"); if (reviewAgain) reviewAgain.addEventListener("click", () => recordPhraseReview(false));
