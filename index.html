@@ -1770,7 +1770,11 @@ function phraseBookListHtml(){
     { key:"mastered", label:"覚えた", count:counts.mastered },
   ];
   const filtered = S.savedPhrases.filter(p => phraseMatchesListFilter(p, S.phraseListFilter));
-  let html = "";
+  let html = '<section class="pb-panel pb-form" aria-labelledby="manualPhraseHeading">'
+    + '<div id="manualPhraseHeading" class="mono pb-title">ADD ─ 表現を追加</div>'
+    + '<input id="manualEnglish" type="text" maxlength="800" value="' + esc(S.manualEnglishDraft) + '" placeholder="English expression" autocomplete="off" style="margin-top:10px">'
+    + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" autocomplete="off">'
+    + '<button type="button" class="btn btn-navy" data-pb-action="add" style="margin-top:10px">表現帳に追加する</button></section>';
   if (S.savedPhrases.length){
     html += '<section class="pb-panel blue" aria-labelledby="practiceHeading">'
       + '<div id="practiceHeading" class="mono pb-title">PRACTICE ─ 練習</div>'
@@ -1790,13 +1794,8 @@ function phraseBookListHtml(){
   } else {
     html += '<div class="pb-panel pb-empty"><div style="font-size:30px">📚</div>'
       + '<b style="display:block;color:var(--navy-deep);margin-top:8px">保存した表現はまだありません</b>'
-      + '下の入力欄、またはセッションレポートの「使える表現」から追加できます。</div>';
+      + '上の入力欄、またはセッションレポートの「使える表現」から追加できます。</div>';
   }
-  html += '<section class="pb-panel pb-form" aria-labelledby="manualPhraseHeading">'
-    + '<div id="manualPhraseHeading" class="mono pb-title">ADD ─ 表現を追加</div>'
-    + '<input id="manualEnglish" type="text" maxlength="800" value="' + esc(S.manualEnglishDraft) + '" placeholder="English expression" autocomplete="off" style="margin-top:10px">'
-    + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" autocomplete="off">'
-    + '<button type="button" class="btn btn-navy" data-pb-action="add" style="margin-top:10px">表現帳に追加する</button></section>';
   html += phraseBackupCardHtml();
   return html;
 }
