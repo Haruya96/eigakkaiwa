@@ -161,7 +161,7 @@ const S = {
   summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
   savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
   manualEnglishDraft:"", manualJapaneseDraft:"",
-  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{}, reviewMode:"active",
+  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{}, reviewAnsweredIds:new Set(), reviewMode:"active",
   practiceScope:"active", phraseListFilter:"all",
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
@@ -1568,7 +1568,7 @@ function startPhraseReview(mode){
     if (aRate !== bRate) return aRate - bRate;
     return String(a.lastReviewedAt || a.createdAt).localeCompare(String(b.lastReviewedAt || b.createdAt));
   }).map(p => p.id);
-  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.reviewMode = mode;
+  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.reviewAnsweredIds = new Set(); S.reviewMode = mode;
   S.phraseView = "review"; S.phraseNotice = "";
   renderPhraseBook();
 }
@@ -1590,6 +1590,8 @@ function recordPhraseReview(remembered){
     masteryUpdatedAt:now,
   }) : p);
   if (!writeSavedPhrases(next)){ refreshPhraseBookBadges(); return; }
+  S.phraseNotice = "";
+  S.reviewAnsweredIds.add(current.id);
   if (!remembered && !S.reviewRetried[current.id]){
     S.reviewRetried[current.id] = true;
     S.reviewQueue.push(current.id);
@@ -1597,6 +1599,20 @@ function recordPhraseReview(remembered){
   S.reviewIndex += 1; S.reviewReveal = false;
   if (S.reviewIndex >= S.reviewQueue.length) S.phraseView = "done";
   renderPhraseBook();
+}
+
+function preparePhraseReviewExit(){
+  const answered = S.reviewAnsweredIds instanceof Set ? S.reviewAnsweredIds.size : 0;
+  S.reviewReveal = false; S.phraseView = "list";
+  if (!phraseNoticeIsError()){
+    S.phraseNotice = answered
+      ? "回答済みの" + answered + "件を保存しました。未回答の表現は変更していません。"
+      : "練習を終了しました。未回答の表現は変更していません。";
+  }
+}
+
+function finishPhraseReviewEarly(){
+  preparePhraseReviewExit(); renderPhraseBook();
 }
 
 function phraseBackupCardHtml(){
@@ -1684,7 +1700,8 @@ function renderPhraseBook(){
     content = '<div style="margin-top:22px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-bottom:10px">'
       +   '<span>' + (S.reviewIndex + 1) + ' / ' + S.reviewQueue.length + '</span>'
-      +   '<button id="reviewCloseBtn" class="small-action">一覧へ戻る</button></div>'
+      +   '<button id="reviewCloseBtn" class="small-action">途中で終了</button></div>'
+      + '<p style="font-size:11px;line-height:1.65;color:var(--sub);margin-bottom:10px">回答するたびに自動保存されます。途中で終了しても、回答済みの内容は表現帳に反映されます。</p>'
       + '<div class="review-card">'
       +   '<div class="mono eyebrow">JAPANESE ─ 英語で思い出す</div>'
       +   '<div style="font-size:18px;font-weight:700;line-height:1.7;margin-top:18px">'
@@ -1780,7 +1797,10 @@ function renderPhraseBook(){
     + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
     + backupCard + content + '</div>';
 
-  $("phraseBackBtn").addEventListener("click", closePhraseBook);
+  $("phraseBackBtn").addEventListener("click", () => {
+    if (S.phraseView === "review") preparePhraseReviewExit();
+    closePhraseBook();
+  });
   bindPhraseBackupControls();
   const manualEn = $("manualEnglish"), manualJa = $("manualJapanese");
   if (manualEn) manualEn.addEventListener("input", () => { S.manualEnglishDraft = manualEn.value; });
@@ -1822,7 +1842,7 @@ function renderPhraseBook(){
   const reviewSpeak = $("reviewSpeakBtn"); if (reviewSpeak) reviewSpeak.addEventListener("click", () => { const p = currentReviewPhrase(); if (p) speak(p.english); });
   const reviewAgain = $("reviewAgainBtn"); if (reviewAgain) reviewAgain.addEventListener("click", () => recordPhraseReview(false));
   const reviewGood = $("reviewGoodBtn"); if (reviewGood) reviewGood.addEventListener("click", () => recordPhraseReview(true));
-  const reviewClose = $("reviewCloseBtn"); if (reviewClose) reviewClose.addEventListener("click", () => { S.phraseView = "list"; renderPhraseBook(); });
+  const reviewClose = $("reviewCloseBtn"); if (reviewClose) reviewClose.addEventListener("click", finishPhraseReviewEarly);
   const reviewDone = $("reviewDoneBtn"); if (reviewDone) reviewDone.addEventListener("click", () => { S.phraseView = "list"; renderPhraseBook(); });
 }
 
