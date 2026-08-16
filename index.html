@@ -75,41 +75,47 @@ textarea,input{font-family:inherit}
 .phrase-notice{min-height:20px;margin-top:8px;font-size:12px;font-weight:700;color:var(--green)}
 .phrase-notice.error{color:var(--red-ink)}
 .phrase-empty{font-size:12px;line-height:1.7;color:var(--sub);margin-top:8px}
-.backup-card{background:#F7FAFF;border:1px solid #C8D6EC;border-radius:16px;padding:16px;margin-top:14px}
-.backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-.mastery-field{border:0;border-top:1px solid var(--line);margin-top:12px;padding-top:11px}
-.mastery-field legend{padding:0 7px 0 0;font-size:10px;font-weight:700;color:#7B8390}
-.mastery-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}
-.mastery-option{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--sub);font-size:12px;font-weight:700;cursor:pointer}
-.mastery-option input{width:18px;height:18px;margin:0;flex-shrink:0}
-.mastery-option.unsure input{accent-color:#A36918}.mastery-option.mastered input{accent-color:var(--green)}
-.mastery-option.unsure.on{border-color:var(--amber-line);background:var(--amber-bg);color:#7A4B0F}
-.mastery-option.mastered.on{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
-.mastery-option:focus-within{outline:3px solid rgba(49,93,155,.2);outline-offset:1px}
-.practice-card{border:1px solid #C8D6EC;background:#F7FAFF;border-radius:18px;padding:17px;margin-top:8px}
-.practice-scope-options{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
-.practice-scope-option{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;min-height:88px;padding:11px 8px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--sub);font-weight:700;line-height:1.35;text-align:center}
-.practice-scope-option.on{border-color:var(--navy);background:var(--navy);color:#fff}
-.practice-scope-option:focus-visible,.phrase-filter:focus-visible,.practice-start:focus-visible{outline:3px solid rgba(49,93,155,.25);outline-offset:2px}
-.practice-scope-title{display:block;font-size:13px}.practice-scope-count{display:block;font-size:16px;margin-top:4px}
-.practice-start{margin-top:11px;background:var(--stripe);color:#fff;min-height:54px;font-size:15px;border-radius:14px}
-.phrase-filter-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px}
-.phrase-filter-bar::-webkit-scrollbar{display:none}
-.phrase-filter{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:46px;padding:7px 3px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--sub);font-size:11px;font-weight:700;white-space:nowrap}
-.phrase-filter.on{border-color:var(--navy);background:var(--navy);color:#fff}
-.phrase-filter-empty{padding:22px 16px;text-align:center;color:var(--sub);font-size:12px;line-height:1.7}
+.pb-panel{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:12px}
+.pb-panel.blue{background:#F7FAFF;border-color:#C8D6EC}
+.pb-title{font-size:11px;font-weight:700;color:var(--navy-deep)}
+.pb-help{font-size:12px;line-height:1.7;color:var(--sub);margin-top:6px}
+.pb-practice-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.pb-practice-btn{min-height:54px;padding:10px;border-radius:12px;background:var(--navy);color:#fff;font-size:12px;font-weight:700;line-height:1.4}
+.pb-practice-btn.secondary{background:var(--paper);border:1px solid var(--line);color:var(--navy)}
+.pb-filter{display:flex;gap:7px;overflow-x:auto;padding:2px 0 5px;margin-top:12px;scrollbar-width:none}
+.pb-filter::-webkit-scrollbar{display:none}
+.pb-filter-btn{flex:0 0 auto;min-height:44px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--sub);font-size:11px;font-weight:700;white-space:nowrap}
+.pb-filter-btn.on{border-color:var(--navy);background:var(--navy);color:#fff}
+.pb-list{display:grid;gap:10px;margin-top:10px}
+.pb-item{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:15px}
+.pb-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.pb-status-badge{flex-shrink:0;padding:4px 8px;border-radius:999px;background:#ECEEF1;color:var(--sub);font-size:10px;font-weight:700}
+.pb-status-badge.unsure{background:var(--amber-bg);color:var(--amber-ink)}
+.pb-status-badge.mastered{background:var(--green-bg);color:var(--green)}
+.pb-status-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.pb-status-btn{min-height:46px;padding:8px;border:1px solid var(--line);border-radius:11px;background:var(--paper);color:var(--sub);font-size:12px;font-weight:700}
+.pb-status-btn.unsure.on{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber-ink)}
+.pb-status-btn.mastered.on{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
+.pb-item-tools{display:flex;justify-content:flex-end;gap:7px;margin-top:9px}
+.pb-notice:not(:empty){position:sticky;top:8px;z-index:5;padding:10px 12px;border:1px solid #BCD9C6;border-radius:10px;background:var(--green-bg);box-shadow:0 4px 14px rgba(23,38,63,.08)}
+.pb-notice.error:not(:empty){border-color:var(--red-line);background:var(--red-bg)}
+.pb-empty{padding:28px 18px;text-align:center;color:var(--sub);font-size:12px;line-height:1.7}
+.pb-form input{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px;font-size:16px;background:var(--bg);outline:none}
+.pb-form input+input{margin-top:8px}
+.pb-backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.pb-review-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 10px;color:var(--sub);font-size:12px}
+.pb-review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 20px;text-align:center}
+.pb-answer-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.pb-answer-btn{min-height:54px;border:1px solid var(--line);border-radius:12px;background:var(--paper);font-size:14px;font-weight:700}
+.pb-answer-btn.unsure{border-color:var(--amber-line);color:var(--amber-ink)}
+.pb-answer-btn.mastered{border-color:#BCD9C6;color:var(--green)}
+.pb-panel button:focus-visible,.pb-item button:focus-visible,.pb-filter-btn:focus-visible,.pb-answer-btn:focus-visible{outline:3px solid rgba(49,93,155,.25);outline-offset:2px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media (max-width:420px){
   .phrase-row{flex-wrap:wrap}
   .phrase-actions{width:100%;justify-content:flex-end}
-  .backup-actions{grid-template-columns:1fr}
-}
-@media (max-width:340px){
-  .mastery-options{grid-template-columns:1fr}
-  .phrase-filter-bar{display:flex;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
-  .phrase-filter{flex:0 0 78px;font-size:11px}
+  .pb-practice-actions,.pb-backup-actions{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -161,8 +167,8 @@ const S = {
   summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
   savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
   manualEnglishDraft:"", manualJapaneseDraft:"",
-  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{}, reviewAnsweredIds:new Set(), reviewMode:"active",
-  practiceScope:"active", phraseListFilter:"all",
+  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewAnsweredIds:new Set(), reviewMode:"active", reviewSaving:false,
+  phraseListFilter:"all",
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
 
@@ -182,7 +188,7 @@ const PHRASE_BACKUP_FORMAT = "eigakkaiwa.phrasebook.backup", PHRASE_BACKUP_VERSI
 const PHRASE_BACKUP_MAX_BYTES = 20 * 1024 * 1024;
 const PHRASE_BACKUP_MAX_ITEMS = 10000, PHRASE_BACKUP_MAX_TEXT = 4000;
 const PHRASE_BACKUP_MAX_REVIEWS = 1000000;
-let phraseBackupBusy = false, phraseBackupOperation = "";
+let phraseBackupBusy = false, phraseBackupOperation = "", phraseStorageWritable = true;
 
 function normalizePhraseText(value){
   let text = String(value == null ? "" : value).trim().replace(/\s+/g, " ");
@@ -199,6 +205,16 @@ function phraseFingerprint(value){
 function makePhraseId(){
   try{ if (crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
   return "phrase_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
+}
+
+function makeStablePhraseId(english, index, salt){
+  const input = phraseFingerprint(english) + "|" + index + "|" + (salt || 0);
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++){
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return "recovered_" + index.toString(36) + "_" + (hash >>> 0).toString(36);
 }
 
 function safeSavedDate(value, fallback){
@@ -228,7 +244,7 @@ function coerceSavedPhrase(raw, index){
   const masteryStatus = safeMasteryStatus(raw.masteryStatus);
   const hasValidMastery = raw.masteryStatus === "unset" || raw.masteryStatus === "unsure" || raw.masteryStatus === "mastered";
   return {
-    id:(rawId && rawId.length <= 200) ? rawId : ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
+    id:(rawId && rawId.length <= 200) ? rawId : makeStablePhraseId(english, index, 0),
     english: english,
     japanese: normalizePhraseText(raw.japanese || raw.ja),
     createdAt: createdAt,
@@ -242,10 +258,76 @@ function coerceSavedPhrase(raw, index){
   };
 }
 
+function normalizeStoredPhraseItems(source, sourceVersion){
+  if (!Array.isArray(source) || source.length > PHRASE_BACKUP_MAX_ITEMS) throw new Error("invalid_storage");
+  const items = [], ids = new Set();
+  source.forEach((raw, index) => {
+    if (sourceVersion >= 2 && typeof raw === "string") throw new Error("invalid_storage");
+    if (typeof raw !== "string"){
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_storage");
+      const rawEnglish = raw.english != null ? raw.english : raw.en;
+      const rawJapanese = raw.japanese != null ? raw.japanese : raw.ja;
+      if (typeof rawEnglish !== "string" || (rawJapanese != null && typeof rawJapanese !== "string")){
+        throw new Error("invalid_storage");
+      }
+      if (sourceVersion >= 2){
+        if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 200) throw new Error("invalid_storage");
+        if (typeof raw.createdAt !== "string" || safeSavedDate(raw.createdAt, null) == null) throw new Error("invalid_storage");
+        if (raw.sourceTitle != null && typeof raw.sourceTitle !== "string") throw new Error("invalid_storage");
+        if (raw.scenario != null && typeof raw.scenario !== "string") throw new Error("invalid_storage");
+        if (String(raw.sourceTitle || "").length > 800 || String(raw.scenario || "").length > 80) throw new Error("invalid_storage");
+        if (!Number.isSafeInteger(raw.reviewCount) || raw.reviewCount < 0 || raw.reviewCount > PHRASE_BACKUP_MAX_REVIEWS) throw new Error("invalid_storage");
+        if (!Number.isSafeInteger(raw.correctCount) || raw.correctCount < 0 || raw.correctCount > raw.reviewCount) throw new Error("invalid_storage");
+        if (raw.lastReviewedAt != null && safeSavedDate(raw.lastReviewedAt, null) == null) throw new Error("invalid_storage");
+        if (safeMasteryStatus(raw.masteryStatus) !== raw.masteryStatus) throw new Error("invalid_storage");
+        if (raw.masteryUpdatedAt != null && safeSavedDate(raw.masteryUpdatedAt, null) == null) throw new Error("invalid_storage");
+      }
+    }
+    const phrase = coerceSavedPhrase(raw, index);
+    if (!phrase || phrase.english.length > PHRASE_BACKUP_MAX_TEXT || phrase.japanese.length > PHRASE_BACKUP_MAX_TEXT){
+      throw new Error("invalid_storage");
+    }
+    if (sourceVersion < 2){ phrase.masteryStatus = "unset"; phrase.masteryUpdatedAt = null; }
+    const key = phraseFingerprint(phrase.english);
+    if (!key) throw new Error("invalid_storage");
+    if (ids.has(phrase.id)){
+      let salt = 0;
+      do{ phrase.id = makeStablePhraseId(phrase.english, index, salt++); }while(ids.has(phrase.id));
+    }
+    ids.add(phrase.id); items.push(phrase);
+  });
+  return items;
+}
+
+function readStoredPhrases(){
+  let raw = localStorage.getItem(LS_PHRASES), legacy = false;
+  if (raw == null){ raw = localStorage.getItem(LS_PHRASES_LEGACY); legacy = raw != null; }
+  if (raw == null) return { items:[], legacy:false };
+  if (!raw) throw new Error("invalid_storage");
+  let parsed;
+  try{ parsed = JSON.parse(raw); }catch(e){ throw new Error("invalid_storage"); }
+  let source, version;
+  if (Array.isArray(parsed)){ source = parsed; version = 1; }
+  else {
+    version = Number(parsed && parsed.version);
+    if (Number.isFinite(version) && version > 2) throw new Error("future_storage");
+    if ((version !== 1 && version !== 2) || !Array.isArray(parsed.items)) throw new Error("invalid_storage");
+    source = parsed.items;
+  }
+  return { items:normalizeStoredPhraseItems(source, version), legacy:legacy };
+}
+
 function writeSavedPhrases(items){
+  if (!phraseStorageWritable){
+    S.phraseNotice = "既存データを保護するため、表現帳の編集を停止しています。";
+    return false;
+  }
   try{
-    localStorage.setItem(LS_PHRASES, JSON.stringify({ version:2, items:items }));
-    S.savedPhrases = items;
+    const normalized = normalizeStoredPhraseItems(items, 2);
+    const serialized = JSON.stringify({ version:2, items:normalized });
+    localStorage.setItem(LS_PHRASES, serialized);
+    if (localStorage.getItem(LS_PHRASES) !== serialized) throw new Error("verify_failed");
+    S.savedPhrases = normalized;
     return true;
   }catch(e){
     S.phraseNotice = "この端末に保存できませんでした。ブラウザの保存設定をご確認ください。";
@@ -255,31 +337,17 @@ function writeSavedPhrases(items){
 
 function loadSavedPhrases(){
   const previous = S.savedPhrases;
-  let raw = null, migrated = false;
   try{
-    raw = localStorage.getItem(LS_PHRASES);
-    if (raw == null){ raw = localStorage.getItem(LS_PHRASES_LEGACY); migrated = raw != null; }
-    if (raw == null){ S.savedPhrases = []; return true; }
-    if (!raw) throw new Error("invalid_storage");
-    const parsed = JSON.parse(raw);
-    const source = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : null);
-    if (!source) throw new Error("invalid_storage");
-    const seen = new Set(), ids = new Set();
-    S.savedPhrases = source.map(coerceSavedPhrase).filter(p => {
-      if (!p) return false;
-      const key = phraseFingerprint(p.english);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      if (ids.has(p.id)) p.id = makePhraseId();
-      ids.add(p.id); return true;
-    });
-    const needsMigration = migrated || Array.isArray(parsed) || Number(parsed && parsed.version) < 2
-      || source.some(item => !item || typeof item !== "object" || !("masteryStatus" in item));
-    if (needsMigration) writeSavedPhrases(S.savedPhrases);
+    const stored = readStoredPhrases();
+    S.savedPhrases = stored.items;
+    phraseStorageWritable = true;
     return true;
   }catch(e){
     S.savedPhrases = previous;
-    S.phraseNotice = "保存済みの表現を読み込めませんでした。";
+    phraseStorageWritable = false;
+    S.phraseNotice = e && e.message === "future_storage"
+      ? "この表現帳は新しい形式です。既存データを保護するため編集を停止しました。アプリを更新してください。"
+      : "保存データを確認できません。既存データを保護するため編集を停止しました。";
     return false;
   }
 }
@@ -298,10 +366,11 @@ function phraseNeedsTranslation(phrase){
 }
 
 function phraseNoticeIsError(){
-  return /できません|入力してください|読み込めません|失敗|更新してください/.test(S.phraseNotice || "");
+  return /できません|入力してください|読み込めません|失敗|更新してください|停止|保護/.test(S.phraseNotice || "");
 }
 
 function savePhraseToBook(phrase, source){
+  if (!loadSavedPhrases()) return "failed";
   const english = normalizePhraseText(phrase && phrase.english);
   const japanese = normalizePhraseText(phrase && phrase.japanese);
   if (!english){ S.phraseNotice = "英語表現を入力してください。"; return "invalid"; }
@@ -329,6 +398,7 @@ function savePhraseToBook(phrase, source){
 }
 
 function saveSummaryPhrases(phrases){
+  if (!loadSavedPhrases()) return 0;
   const source = { sourceTitle:S.digest && S.digest.title, scenario:S.scenario };
   const additions = [], updated = S.savedPhrases.slice();
   const byKey = new Map(), pendingKeys = new Set();
@@ -364,6 +434,7 @@ function saveSummaryPhrases(phrases){
 }
 
 function removeSavedPhrase(id){
+  if (!loadSavedPhrases()) return false;
   const next = S.savedPhrases.filter(p => p.id !== id);
   if (next.length === S.savedPhrases.length) return false;
   if (!writeSavedPhrases(next)) return false;
@@ -477,15 +548,21 @@ function parsePhraseBackup(text){
   }
   if (!source || source.length > PHRASE_BACKUP_MAX_ITEMS) throw new Error("invalid_backup");
 
-  const items = [], seen = new Set(), ids = new Set();
+  const items = [], ids = new Set();
   source.forEach((raw, index) => {
+    if (sourceVersion >= 2 && typeof raw === "string") throw new Error("invalid_backup");
     if (typeof raw !== "string"){
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_backup");
       const rawEnglish = raw.english != null ? raw.english : raw.en;
       const rawJapanese = raw.japanese != null ? raw.japanese : raw.ja;
       if (typeof rawEnglish !== "string" || (rawJapanese != null && typeof rawJapanese !== "string")) throw new Error("invalid_backup");
       if (sourceVersion >= 2){
-        if (raw.masteryStatus != null && safeMasteryStatus(raw.masteryStatus) !== raw.masteryStatus) throw new Error("invalid_backup");
+        if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 200) throw new Error("invalid_backup");
+        if (typeof raw.createdAt !== "string" || safeSavedDate(raw.createdAt, null) == null) throw new Error("invalid_backup");
+        if (!Number.isSafeInteger(raw.reviewCount) || raw.reviewCount < 0 || raw.reviewCount > PHRASE_BACKUP_MAX_REVIEWS) throw new Error("invalid_backup");
+        if (!Number.isSafeInteger(raw.correctCount) || raw.correctCount < 0 || raw.correctCount > raw.reviewCount) throw new Error("invalid_backup");
+        if (raw.lastReviewedAt != null && safeSavedDate(raw.lastReviewedAt, null) == null) throw new Error("invalid_backup");
+        if (safeMasteryStatus(raw.masteryStatus) !== raw.masteryStatus) throw new Error("invalid_backup");
         if (raw.masteryUpdatedAt != null && safeSavedDate(raw.masteryUpdatedAt, null) == null) throw new Error("invalid_backup");
       }
     }
@@ -495,10 +572,10 @@ function parsePhraseBackup(text){
     if (!item || item.english.length > PHRASE_BACKUP_MAX_TEXT || item.japanese.length > PHRASE_BACKUP_MAX_TEXT) throw new Error("invalid_backup");
     if (sourceVersion < 2){ item.masteryStatus = "unset"; item.masteryUpdatedAt = null; }
     item.sourceTitle = ""; item.scenario = "";
-    const key = phraseFingerprint(item.english);
-    if (seen.has(key)) return;
-    seen.add(key);
-    if (ids.has(item.id)) item.id = makePhraseId();
+    if (ids.has(item.id)){
+      let salt = 0;
+      do{ item.id = makeStablePhraseId(item.english, index, salt++); }while(ids.has(item.id));
+    }
     ids.add(item.id); items.push(item);
   });
   return items;
@@ -534,18 +611,31 @@ function mergeMasteryState(current, imported){
 }
 
 function mergePhraseBackupItems(imported){
-  const next = S.savedPhrases.slice(), byKey = new Map(), usedIds = new Set();
-  next.forEach((p, index) => { byKey.set(phraseFingerprint(p.english), index); usedIds.add(p.id); });
+  const next = S.savedPhrases.slice(), byKey = new Map(), byId = new Map(), usedIds = new Set(), matched = new Set();
+  next.forEach((p, index) => {
+    const key = phraseFingerprint(p.english);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(index); byId.set(p.id, index); usedIds.add(p.id);
+  });
   const additions = [];
   let updated = 0, unchanged = 0;
   imported.forEach(item => {
     const key = phraseFingerprint(item.english);
-    if (!byKey.has(key)){
+    const idMatch = byId.get(item.id);
+    let index = Number.isInteger(idMatch) && !matched.has(idMatch)
+      && phraseFingerprint(next[idMatch].english) === key ? idMatch : -1;
+    if (index === -1){
+      const candidates = byKey.get(key) || [];
+      index = candidates.find(candidate => !matched.has(candidate));
+      if (!Number.isInteger(index)) index = -1;
+    }
+    if (index === -1){
       const copy = Object.assign({}, item);
       if (!copy.id || usedIds.has(copy.id)) copy.id = makePhraseId();
       usedIds.add(copy.id); additions.push(copy); return;
     }
-    const index = byKey.get(key), current = next[index];
+    matched.add(index);
+    const current = next[index];
     const reviewCount = Math.max(Number(current.reviewCount) || 0, Number(item.reviewCount) || 0);
     const correctCount = Math.min(reviewCount, Math.max(Number(current.correctCount) || 0, Number(item.correctCount) || 0));
     const mastery = mergeMasteryState(current, item);
@@ -637,6 +727,7 @@ function openPhraseBook(){
   }
   try{ if (window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
   if (S.stage !== "phrasebook") S.phraseReturnStage = S.stage;
+  loadSavedPhrases();
   S.phraseView = "list"; S.reviewReveal = false;
   setStage("phrasebook");
 }
@@ -1506,7 +1597,7 @@ function renderMsgs(){
   if (scr) scr.scrollTop = scr.scrollHeight;
 }
 
-// ── saved phrases / review ──
+// ── saved phrases / review (rebuild 2026-08-17) ──
 function formatSavedDate(value){
   const d = new Date(value);
   if (!value || isNaN(d.getTime())) return "";
@@ -1525,12 +1616,9 @@ function phraseMatchesListFilter(phrase, filter){
   return filter === "all" || safeMasteryStatus(phrase && phrase.masteryStatus) === filter;
 }
 
-function practiceScopeCount(counts, scope){
-  return scope === "unsure" ? counts.unsure : counts.unset + counts.unsure;
-}
-
-function setPhraseMasteryStatus(id, status){
+function setPhraseMasteryStatus(id, status, alreadyLoaded){
   if (status !== "unset" && status !== "unsure" && status !== "mastered") return false;
+  if (!alreadyLoaded && !loadSavedPhrases()) return false;
   const index = S.savedPhrases.findIndex(p => p.id === id);
   if (index === -1) return false;
   const next = S.savedPhrases.slice();
@@ -1544,8 +1632,18 @@ function setPhraseMasteryStatus(id, status){
   return true;
 }
 
+function togglePhraseMasteryStatus(id, status){
+  if (status !== "unsure" && status !== "mastered") return false;
+  if (!loadSavedPhrases()) return false;
+  const phrase = S.savedPhrases.find(p => p.id === id);
+  if (!phrase) return false;
+  const nextStatus = safeMasteryStatus(phrase.masteryStatus) === status ? "unset" : status;
+  return setPhraseMasteryStatus(id, nextStatus, true);
+}
+
 function startPhraseReview(mode){
   mode = mode === "unsure" ? "unsure" : "active";
+  if (!loadSavedPhrases()){ renderPhraseBook(); return; }
   const candidates = S.savedPhrases.filter(p => mode === "unsure"
     ? safeMasteryStatus(p.masteryStatus) === "unsure"
     : safeMasteryStatus(p.masteryStatus) !== "mastered");
@@ -1568,7 +1666,8 @@ function startPhraseReview(mode){
     if (aRate !== bRate) return aRate - bRate;
     return String(a.lastReviewedAt || a.createdAt).localeCompare(String(b.lastReviewedAt || b.createdAt));
   }).map(p => p.id);
-  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.reviewAnsweredIds = new Set(); S.reviewMode = mode;
+  S.reviewIndex = 0; S.reviewReveal = false; S.reviewAnsweredIds = new Set();
+  S.reviewMode = mode; S.reviewSaving = false;
   S.phraseView = "review"; S.phraseNotice = "";
   renderPhraseBook();
 }
@@ -1578,9 +1677,13 @@ function currentReviewPhrase(){
   return S.savedPhrases.find(p => p.id === id) || null;
 }
 
-function recordPhraseReview(remembered){
+function recordPhraseReview(remembered, expectedId){
+  if (S.reviewSaving) return;
+  if (!loadSavedPhrases()){ renderPhraseBook(); return; }
   const current = currentReviewPhrase();
-  if (!current) return;
+  if (!current){ renderPhraseBook(); return; }
+  if (expectedId && current.id !== expectedId) return;
+  S.reviewSaving = true;
   const now = new Date().toISOString();
   const next = S.savedPhrases.map(p => p.id === current.id ? Object.assign({}, p, {
     reviewCount:(Number(p.reviewCount) || 0) + 1,
@@ -1589,13 +1692,11 @@ function recordPhraseReview(remembered){
     masteryStatus:remembered ? "mastered" : "unsure",
     masteryUpdatedAt:now,
   }) : p);
-  if (!writeSavedPhrases(next)){ refreshPhraseBookBadges(); return; }
+  const saved = writeSavedPhrases(next);
+  S.reviewSaving = false;
+  if (!saved){ renderPhraseBook(); return; }
   S.phraseNotice = "";
   S.reviewAnsweredIds.add(current.id);
-  if (!remembered && !S.reviewRetried[current.id]){
-    S.reviewRetried[current.id] = true;
-    S.reviewQueue.push(current.id);
-  }
   S.reviewIndex += 1; S.reviewReveal = false;
   if (S.reviewIndex >= S.reviewQueue.length) S.phraseView = "done";
   renderPhraseBook();
@@ -1603,7 +1704,7 @@ function recordPhraseReview(remembered){
 
 function preparePhraseReviewExit(){
   const answered = S.reviewAnsweredIds instanceof Set ? S.reviewAnsweredIds.size : 0;
-  S.reviewReveal = false; S.phraseView = "list";
+  S.reviewReveal = false; S.phraseView = "list"; S.phraseListFilter = "all";
   if (!phraseNoticeIsError()){
     S.phraseNotice = answered
       ? "回答済みの" + answered + "件を保存しました。未回答の表現は変更していません。"
@@ -1616,234 +1717,214 @@ function finishPhraseReviewEarly(){
 }
 
 function phraseBackupCardHtml(){
-  return '<section class="backup-card" aria-labelledby="phraseBackupHeading">'
-    + '<div id="phraseBackupHeading" class="mono" style="font-size:10px;font-weight:500;color:#315D9B">BACKUP ─ 保存・読み込み</div>'
-    + '<p style="font-size:12px;line-height:1.7;color:var(--sub);margin-top:7px">「共有先アプリを選ぶ」を押すとAndroidの共有画面が開きます。<b style="color:var(--navy)">Google Drive</b>など、保存したいアプリを選んでください。Driveには読み込み可能なTXTバックアップとして保存され、端末へ自動ダウンロードはしません。</p>'
-    + '<div class="backup-actions">'
-    + '<button id="phraseBackupSaveBtn" class="btn btn-navy">共有先アプリを選ぶ</button>'
-    + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
+  return '<section class="pb-panel blue" aria-labelledby="phraseBackupHeading">'
+    + '<div id="phraseBackupHeading" class="mono pb-title">BACKUP ─ 保存・読み込み</div>'
+    + '<p class="pb-help">Androidの共有画面から<b style="color:var(--navy)">Google Drive</b>などを選べます。読み込みは現在の表現を消さずに追加・更新します。</p>'
+    + '<div class="pb-backup-actions">'
+    + '<button type="button" id="phraseBackupSaveBtn" data-pb-action="backup-save" class="btn btn-navy">共有先アプリを選ぶ</button>'
+    + '<button type="button" id="phraseBackupLoadBtn" data-pb-action="backup-load" class="btn btn-ghost">バックアップを読み込む</button></div>'
     + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
-    + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・学習状態・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
+    + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">保存対象は英語表現・日本語訳・学習状態・復習履歴のみです。Gemini APIキー、PDF、会話内容は含まれません。</p>'
     + '</section>';
 }
 
-function bindPhraseBackupControls(){
-  const save = $("phraseBackupSaveBtn");
-  if (save) save.addEventListener("click", () => { exportPhraseBackup(); });
-  const load = $("phraseBackupLoadBtn"), input = $("phraseBackupFile");
-  if (load && input) load.addEventListener("click", () => input.click());
-  if (input) input.addEventListener("change", () => {
-    const file = input.files && input.files[0];
-    input.value = "";
-    if (file) importPhraseBackupFile(file);
-  });
+function phraseStatusMeta(status){
+  status = safeMasteryStatus(status);
+  if (status === "unsure") return { label:"まだ不安", className:"unsure" };
+  if (status === "mastered") return { label:"覚えた", className:"mastered" };
+  return { label:"未選択", className:"" };
 }
 
-function syncPhraseMasteryControls(){
-  const counts = phraseMasteryCounts();
-  const phrasesById = new Map(S.savedPhrases.map(p => [p.id, p]));
-  if (S.practiceScope !== "unsure") S.practiceScope = "active";
+function savedPhraseCardHtml(phrase){
+  const status = safeMasteryStatus(phrase.masteryStatus);
+  const statusMeta = phraseStatusMeta(status);
+  const meta = [phrase.sourceTitle, formatSavedDate(phrase.createdAt)].filter(Boolean).join(" · ");
+  const id = esc(phrase.id);
+  return '<article class="pb-item">'
+    + '<div class="pb-item-head"><div style="min-width:0;flex:1">'
+    + '<div lang="en" style="font-size:15px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(phrase.english) + '</div>'
+    + (phrase.japanese ? '<div style="font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px">' + esc(phrase.japanese) + '</div>' : '')
+    + (meta ? '<div style="font-size:10px;color:#8A909B;margin-top:7px;overflow-wrap:anywhere">' + esc(meta) + '</div>' : '')
+    + '</div><span class="pb-status-badge ' + statusMeta.className + '">' + statusMeta.label + '</span></div>'
+    + '<div class="pb-status-actions" role="group" aria-label="' + esc(phrase.english) + 'の学習状態">'
+    + '<button type="button" class="pb-status-btn unsure' + (status === "unsure" ? ' on' : '')
+    + '" data-pb-action="status" data-id="' + id + '" data-status="unsure" aria-pressed="' + (status === "unsure" ? 'true' : 'false') + '">'
+    + '<span aria-hidden="true">' + (status === "unsure" ? '✓ ' : '') + '</span>まだ不安</button>'
+    + '<button type="button" class="pb-status-btn mastered' + (status === "mastered" ? ' on' : '')
+    + '" data-pb-action="status" data-id="' + id + '" data-status="mastered" aria-pressed="' + (status === "mastered" ? 'true' : 'false') + '">'
+    + '<span aria-hidden="true">' + (status === "mastered" ? '✓ ' : '') + '</span>覚えた</button></div>'
+    + '<div class="pb-item-tools">'
+    + '<button type="button" class="small-action" data-pb-action="speak" data-id="' + id + '">🔊 読む</button>'
+    + '<button type="button" class="small-action" data-pb-action="delete" data-id="' + id + '" style="color:var(--red-ink)">削除</button>'
+    + '</div></article>';
+}
+
+function phraseBookListHtml(){
   if (["all","unset","unsure","mastered"].indexOf(S.phraseListFilter) === -1) S.phraseListFilter = "all";
+  const counts = phraseMasteryCounts();
   const activeCount = counts.unset + counts.unsure;
-  const unsetCount = $("masteryUnsetCount"), unsureCount = $("masteryUnsureCount"), masteredCount = $("masteryMasteredCount");
-  if (unsetCount) unsetCount.textContent = counts.unset;
-  if (unsureCount) unsureCount.textContent = counts.unsure;
-  if (masteredCount) masteredCount.textContent = counts.mastered;
-  document.querySelectorAll(".phraseMastery").forEach(input => {
-    const phrase = phrasesById.get(input.getAttribute("data-id"));
-    const checked = !!phrase && safeMasteryStatus(phrase.masteryStatus) === input.getAttribute("data-status");
-    input.checked = checked;
-    const label = input.closest && input.closest(".mastery-option");
-    if (label) label.classList.toggle("on", checked);
-  });
-  const activeScope = $("practiceActiveBtn"), unsureScope = $("practiceUnsureBtn");
-  [[activeScope, "active"], [unsureScope, "unsure"]].forEach(pair => {
-    if (!pair[0]) return;
-    const selected = S.practiceScope === pair[1];
-    pair[0].classList.toggle("on", selected); pair[0].setAttribute("aria-pressed", selected ? "true" : "false");
-  });
-  const activeScopeCount = $("practiceActiveCount"), unsureScopeCount = $("practiceUnsureCount");
-  if (activeScopeCount) activeScopeCount.textContent = activeCount + "件";
-  if (unsureScopeCount) unsureScopeCount.textContent = counts.unsure + "件";
-  const selectedCount = practiceScopeCount(counts, S.practiceScope);
-  const start = $("startReviewBtn");
-  if (start){
-    start.disabled = selectedCount === 0;
-    start.textContent = selectedCount
-      ? "選んだ表現を練習する（" + selectedCount + "件）" : "練習対象の表現はありません";
+  const filters = [
+    { key:"all", label:"すべて", count:S.savedPhrases.length },
+    { key:"unset", label:"未選択", count:counts.unset },
+    { key:"unsure", label:"まだ不安", count:counts.unsure },
+    { key:"mastered", label:"覚えた", count:counts.mastered },
+  ];
+  const filtered = S.savedPhrases.filter(p => phraseMatchesListFilter(p, S.phraseListFilter));
+  let html = "";
+  if (S.savedPhrases.length){
+    html += '<section class="pb-panel blue" aria-labelledby="practiceHeading">'
+      + '<div id="practiceHeading" class="mono pb-title">PRACTICE ─ 練習</div>'
+      + '<p class="pb-help">1回の練習では各表現を1度だけ出します。回答した瞬間に保存され、「覚えた」は次回から通常練習に出ません。</p>'
+      + '<div class="pb-practice-actions">'
+      + '<button type="button" class="pb-practice-btn" data-pb-action="practice-active"' + (activeCount ? '' : ' disabled') + '>'
+      + (activeCount ? '未選択＋まだ不安を練習（' + activeCount + '件）' : '通常の練習対象はありません') + '</button>'
+      + '<button type="button" class="pb-practice-btn secondary" data-pb-action="practice-unsure"' + (counts.unsure ? '' : ' disabled') + '>'
+      + (counts.unsure ? 'まだ不安だけ練習（' + counts.unsure + '件）' : 'まだ不安の表現はありません') + '</button></div></section>';
+    html += '<nav class="pb-filter" aria-label="表現の絞り込み">'
+      + filters.map(item => '<button type="button" class="pb-filter-btn' + (S.phraseListFilter === item.key ? ' on' : '')
+        + '" data-pb-action="filter" data-filter="' + item.key + '" aria-pressed="' + (S.phraseListFilter === item.key ? 'true' : 'false') + '">'
+        + item.label + ' ' + item.count + '</button>').join("") + '</nav>';
+    html += filtered.length
+      ? '<div class="pb-list">' + filtered.map(savedPhraseCardHtml).join("") + '</div>'
+      : '<div class="pb-panel pb-empty"><b style="color:var(--navy-deep)">この状態の表現はありません</b><br>上の絞り込みを変更してください。</div>';
+  } else {
+    html += '<div class="pb-panel pb-empty"><div style="font-size:30px">📚</div>'
+      + '<b style="display:block;color:var(--navy-deep);margin-top:8px">保存した表現はまだありません</b>'
+      + '下の入力欄、またはセッションレポートの「使える表現」から追加できます。</div>';
   }
-  const filterCounts = { all:S.savedPhrases.length, unset:counts.unset, unsure:counts.unsure, mastered:counts.mastered };
-  document.querySelectorAll(".phrase-filter").forEach(button => {
-    const filter = button.getAttribute("data-filter");
-    const selected = filter === S.phraseListFilter;
-    button.classList.toggle("on", selected); button.setAttribute("aria-pressed", selected ? "true" : "false");
-    const count = button.querySelector && button.querySelector(".phrase-filter-count");
-    if (count) count.textContent = filterCounts[filter] == null ? 0 : filterCounts[filter];
-  });
-  let visible = 0;
-  document.querySelectorAll(".savedPhraseCard").forEach(card => {
-    const phrase = phrasesById.get(card.getAttribute("data-id"));
-    const show = !!phrase && phraseMatchesListFilter(phrase, S.phraseListFilter);
-    card.hidden = !show; if (show) visible += 1;
-  });
-  const empty = $("phraseFilterEmpty");
-  if (empty) empty.hidden = visible !== 0;
-  const filterStatus = $("phraseFilterStatus");
-  if (filterStatus) filterStatus.textContent = visible + "件の表現を表示しています。";
+  html += '<section class="pb-panel pb-form" aria-labelledby="manualPhraseHeading">'
+    + '<div id="manualPhraseHeading" class="mono pb-title">ADD ─ 表現を追加</div>'
+    + '<input id="manualEnglish" type="text" maxlength="800" value="' + esc(S.manualEnglishDraft) + '" placeholder="English expression" autocomplete="off" style="margin-top:10px">'
+    + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" autocomplete="off">'
+    + '<button type="button" class="btn btn-navy" data-pb-action="add" style="margin-top:10px">表現帳に追加する</button></section>';
+  html += phraseBackupCardHtml();
+  return html;
+}
+
+function phraseBookReviewHtml(){
+  const phrase = currentReviewPhrase();
+  if (!phrase) return "";
+  const id = esc(phrase.id);
+  return '<div class="pb-review-head"><b>' + (S.reviewIndex + 1) + ' / ' + S.reviewQueue.length + '</b>'
+    + '<button type="button" class="small-action" data-pb-action="early-exit">途中で終了</button></div>'
+    + '<p class="pb-help">回答ボタンを押した時点で保存します。途中で終了しても、回答済みの内容だけが表現帳に残ります。</p>'
+    + '<section class="pb-review-card" aria-labelledby="reviewPrompt">'
+    + '<div class="mono pb-title">JAPANESE ─ 英語で思い出す</div>'
+    + '<div id="reviewPrompt" style="font-size:18px;font-weight:700;line-height:1.7;margin-top:18px">'
+    + esc(phrase.japanese || "この表現の英語を思い出してみましょう") + '</div>'
+    + (S.reviewReveal
+      ? '<div style="border-top:1px solid var(--line);margin-top:22px;padding-top:22px">'
+        + '<div lang="en" style="font-size:20px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(phrase.english) + '</div>'
+        + '<button type="button" class="small-action" data-pb-action="review-speak" style="margin-top:14px">🔊 読み上げる</button></div>'
+      : '<button type="button" class="btn btn-navy" data-pb-action="reveal" style="margin-top:26px">英語を表示する</button>')
+    + '</section>'
+    + (S.reviewReveal
+      ? '<p class="pb-help" style="text-align:center;margin-top:12px">今の答えを選ぶと保存して次へ進みます。</p>'
+        + '<div class="pb-answer-actions">'
+        + '<button type="button" class="pb-answer-btn unsure" data-pb-action="answer-unsure" data-id="' + id + '">まだ不安</button>'
+        + '<button type="button" class="pb-answer-btn mastered" data-pb-action="answer-mastered" data-id="' + id + '">覚えた</button></div>'
+      : '');
+}
+
+function phraseBookDoneHtml(){
+  const answered = S.reviewAnsweredIds instanceof Set ? S.reviewAnsweredIds.size : S.reviewQueue.length;
+  return '<section class="pb-panel" style="padding:30px 20px;text-align:center;margin-top:24px">'
+    + '<div style="font-size:34px">✓</div>'
+    + '<h2 class="display" style="font-size:21px;color:var(--navy-deep);margin-top:10px">練習を完了しました</h2>'
+    + '<p style="font-size:13px;color:var(--sub);margin-top:8px">' + answered + '件の回答を保存しました。</p>'
+    + '<button type="button" class="btn btn-navy" data-pb-action="done-list" style="margin-top:22px">表現一覧へ戻る</button></section>';
+}
+
+function saveManualPhrase(){
+  const english = $("manualEnglish"), japanese = $("manualJapanese");
+  if (english) S.manualEnglishDraft = english.value;
+  if (japanese) S.manualJapaneseDraft = japanese.value;
+  const result = savePhraseToBook({ english:S.manualEnglishDraft, japanese:S.manualJapaneseDraft }, {});
+  if (result !== "invalid" && result !== "failed"){
+    S.manualEnglishDraft = ""; S.manualJapaneseDraft = ""; S.phraseListFilter = "all";
+  }
+  renderPhraseBook();
+  if (result === "invalid" && $("manualEnglish")) $("manualEnglish").focus();
+}
+
+function bindPhraseBookUI(){
+  app.onclick = event => {
+    const button = event.target.closest && event.target.closest("[data-pb-action]");
+    if (!button || button.disabled) return;
+    const action = button.getAttribute("data-pb-action");
+    if (action === "close"){
+      if (S.phraseView === "review") preparePhraseReviewExit();
+      closePhraseBook();
+    } else if (action === "practice-active") startPhraseReview("active");
+    else if (action === "practice-unsure") startPhraseReview("unsure");
+    else if (action === "filter"){
+      const filter = button.getAttribute("data-filter");
+      if (["all","unset","unsure","mastered"].indexOf(filter) !== -1){ S.phraseListFilter = filter; renderPhraseBook(); }
+    } else if (action === "status"){
+      togglePhraseMasteryStatus(button.getAttribute("data-id"), button.getAttribute("data-status"));
+      renderPhraseBook();
+    } else if (action === "speak"){
+      const phrase = S.savedPhrases.find(p => p.id === button.getAttribute("data-id"));
+      if (phrase) speak(phrase.english);
+    } else if (action === "delete"){
+      const phrase = S.savedPhrases.find(p => p.id === button.getAttribute("data-id"));
+      if (phrase && window.confirm('「' + phrase.english + '」を表現帳から削除しますか？')){
+        removeSavedPhrase(phrase.id); renderPhraseBook();
+      }
+    } else if (action === "add") saveManualPhrase();
+    else if (action === "backup-save") exportPhraseBackup();
+    else if (action === "backup-load"){
+      const input = $("phraseBackupFile"); if (input) input.click();
+    } else if (action === "reveal"){
+      S.reviewReveal = true; renderPhraseBook();
+    } else if (action === "review-speak"){
+      const phrase = currentReviewPhrase(); if (phrase) speak(phrase.english);
+    } else if (action === "answer-unsure") recordPhraseReview(false, button.getAttribute("data-id"));
+    else if (action === "answer-mastered") recordPhraseReview(true, button.getAttribute("data-id"));
+    else if (action === "early-exit") finishPhraseReviewEarly();
+    else if (action === "done-list"){
+      S.phraseView = "list"; S.phraseListFilter = "all"; renderPhraseBook();
+    }
+  };
+  app.oninput = event => {
+    if (event.target.id === "manualEnglish") S.manualEnglishDraft = event.target.value;
+    if (event.target.id === "manualJapanese") S.manualJapaneseDraft = event.target.value;
+  };
+  app.onkeydown = event => {
+    if (event.target.id === "manualJapanese" && event.key === "Enter"){
+      event.preventDefault(); saveManualPhrase();
+    }
+  };
+  app.onchange = event => {
+    if (event.target.id !== "phraseBackupFile") return;
+    const file = event.target.files && event.target.files[0];
+    event.target.value = "";
+    if (file) importPhraseBackupFile(file);
+  };
 }
 
 function renderPhraseBook(){
-  let content = "";
   if (S.phraseView === "review"){
-    const p = currentReviewPhrase();
-    if (!p){ S.phraseView = "done"; renderPhraseBook(); return; }
-    content = '<div style="margin-top:22px">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-bottom:10px">'
-      +   '<span>' + (S.reviewIndex + 1) + ' / ' + S.reviewQueue.length + '</span>'
-      +   '<button id="reviewCloseBtn" class="small-action">途中で終了</button></div>'
-      + '<p style="font-size:11px;line-height:1.65;color:var(--sub);margin-bottom:10px">回答するたびに自動保存されます。途中で終了しても、回答済みの内容は表現帳に反映されます。</p>'
-      + '<div class="review-card">'
-      +   '<div class="mono eyebrow">JAPANESE ─ 英語で思い出す</div>'
-      +   '<div style="font-size:18px;font-weight:700;line-height:1.7;margin-top:18px">'
-      +     esc(p.japanese || "この表現の英語を思い出してみましょう") + '</div>'
-      +   (S.reviewReveal
-        ? '<div style="border-top:1px solid var(--line);margin-top:22px;padding-top:22px">'
-          + '<div lang="en" style="font-size:20px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
-          + '<button id="reviewSpeakBtn" class="small-action" style="margin-top:14px">🔊 読み上げる</button></div>'
-        : '<button id="reviewRevealBtn" class="btn btn-navy" style="margin-top:26px">英語を表示する</button>')
-      + '</div>'
-      + (S.reviewReveal ? '<p style="font-size:11px;color:var(--sub);text-align:center;margin-top:13px">最初はどちらも未選択です。</p><div style="display:flex;gap:10px;margin-top:7px">'
-        + '<button id="reviewAgainBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>まだ不安</button>'
-        + '<button id="reviewGoodBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>覚えた</button></div>' : '')
-      + '</div>';
-  } else if (S.phraseView === "done"){
-    content = '<div class="card" style="padding:28px 20px;text-align:center;margin-top:24px">'
-      + '<div style="font-size:34px">✓</div>'
-      + '<h2 class="display" style="font-size:21px;color:var(--navy-deep);margin-top:10px">今回の復習は完了です</h2>'
-      + '<p style="font-size:13px;color:var(--sub);margin-top:8px">' + S.reviewQueue.length + '回、表現を復習しました。</p>'
-      + '<button id="reviewDoneBtn" class="btn btn-navy" style="margin-top:22px">表現一覧へ戻る</button></div>';
-  } else {
-    const masteryCounts = phraseMasteryCounts();
-    const activeCount = masteryCounts.unset + masteryCounts.unsure;
-    if (S.practiceScope !== "unsure") S.practiceScope = "active";
-    if (["all","unset","unsure","mastered"].indexOf(S.phraseListFilter) === -1) S.phraseListFilter = "all";
-    const selectedPracticeCount = practiceScopeCount(masteryCounts, S.practiceScope);
-    const filterDefs = [
-      { key:"all", label:"すべて", count:S.savedPhrases.length },
-      { key:"unset", label:"未選択", count:masteryCounts.unset, id:"masteryUnsetCount" },
-      { key:"unsure", label:"まだ不安", count:masteryCounts.unsure, id:"masteryUnsureCount" },
-      { key:"mastered", label:"覚えた", count:masteryCounts.mastered, id:"masteryMasteredCount" },
-    ];
-    const filterBar = '<div class="phrase-filter-bar" role="group" aria-label="表現一覧の表示を絞り込む">'
-      + filterDefs.map(item => '<button type="button" class="phrase-filter' + (S.phraseListFilter === item.key ? ' on' : '')
-        + '" data-filter="' + item.key + '" aria-pressed="' + (S.phraseListFilter === item.key ? 'true' : 'false') + '">'
-        + '<span>' + item.label + '</span><b' + (item.id ? ' id="' + item.id + '"' : '')
-        + ' class="phrase-filter-count">' + item.count + '</b></button>').join("") + '</div>';
-    let rows = "";
-    S.savedPhrases.forEach((p, phraseIndex) => {
-      const meta = [p.sourceTitle, formatSavedDate(p.createdAt)].filter(Boolean).join(" · ");
-      const masteryStatus = safeMasteryStatus(p.masteryStatus);
-      const unsureId = "phraseUnsure_" + phraseIndex, masteredId = "phraseMastered_" + phraseIndex;
-      rows += '<div class="card savedPhraseCard" data-id="' + esc(p.id) + '"'
-        + (phraseMatchesListFilter(p, S.phraseListFilter) ? '' : ' hidden') + ' style="padding:14px 16px;margin-top:10px">'
-        + '<div lang="en" style="font-size:15px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
-        + (p.japanese ? '<div style="font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px">' + esc(p.japanese) + '</div>' : '')
-        + (meta ? '<div style="font-size:10px;color:#8A909B;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(meta) + '</div>' : '')
-        + '<fieldset class="mastery-field"><legend>学習状態（1つまで選択・もう一度押すと解除）</legend><div class="mastery-options">'
-        + '<label class="mastery-option unsure' + (masteryStatus === "unsure" ? ' on' : '') + '" for="' + unsureId + '">'
-        +   '<input id="' + unsureId + '" class="phraseMastery" type="checkbox" data-id="' + esc(p.id) + '" data-status="unsure"' + (masteryStatus === "unsure" ? ' checked' : '') + '>まだ不安</label>'
-        + '<label class="mastery-option mastered' + (masteryStatus === "mastered" ? ' on' : '') + '" for="' + masteredId + '">'
-        +   '<input id="' + masteredId + '" class="phraseMastery" type="checkbox" data-id="' + esc(p.id) + '" data-status="mastered"' + (masteryStatus === "mastered" ? ' checked' : '') + '>覚えた</label>'
-        + '</div></fieldset>'
-        + '<div style="display:flex;justify-content:flex-end;gap:7px;margin-top:10px">'
-        +   '<button class="savedPhraseSpeak small-action" data-id="' + esc(p.id) + '">🔊 読む</button>'
-        +   '<button class="savedPhraseDelete small-action" data-id="' + esc(p.id) + '" style="color:var(--red-ink)">削除</button></div></div>';
-    });
-    content = '<div class="card" style="padding:16px;margin-top:20px">'
-      + '<div class="mono eyebrow">ADD ─ 表現を追加</div>'
-      + '<input id="manualEnglish" type="text" maxlength="800" value="' + esc(S.manualEnglishDraft) + '" placeholder="English expression" style="margin-top:10px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
-      + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
-      + '<button id="manualPhraseSave" class="btn btn-navy" style="margin-top:10px">表現帳に追加する</button></div>'
-      + (S.savedPhrases.length
-        ? '<section class="practice-card" aria-labelledby="practiceHeading">'
-          + '<div id="practiceHeading" class="mono" style="font-size:10px;color:#315D9B">PRACTICE ─ 練習対象</div>'
-          + '<p id="practiceHelp" style="font-size:12px;line-height:1.75;color:var(--sub);margin-top:10px">「覚えた」は練習から自動で外れます。練習したい範囲を選んでください。</p>'
-          + '<div class="practice-scope-options" role="group" aria-label="練習する表現の範囲">'
-          + '<button type="button" id="practiceActiveBtn" class="practice-scope-option' + (S.practiceScope === "active" ? ' on' : '')
-          + '" aria-pressed="' + (S.practiceScope === "active" ? 'true' : 'false') + '"><span class="practice-scope-title">未選択＋まだ不安</span>'
-          + '<b id="practiceActiveCount" class="practice-scope-count">' + activeCount + '件</b></button>'
-          + '<button type="button" id="practiceUnsureBtn" class="practice-scope-option' + (S.practiceScope === "unsure" ? ' on' : '')
-          + '" aria-pressed="' + (S.practiceScope === "unsure" ? 'true' : 'false') + '"><span class="practice-scope-title">まだ不安だけ</span>'
-          + '<b id="practiceUnsureCount" class="practice-scope-count">' + masteryCounts.unsure + '件</b></button></div>'
-          + '<button type="button" id="startReviewBtn" class="btn practice-start" aria-describedby="practiceHelp"' + (selectedPracticeCount ? '' : ' disabled')
-          + '>' + (selectedPracticeCount ? '選んだ表現を練習する（' + selectedPracticeCount + '件）' : '練習対象の表現はありません') + '</button></section>'
-          + filterBar
-          + '<p id="phraseFilterStatus" class="sr-only" aria-live="polite"></p>'
-          + '<div id="phraseFilterEmpty" class="card phrase-filter-empty"' + (filterDefs.find(item => item.key === S.phraseListFilter).count ? ' hidden' : '')
-          + '><b style="color:var(--navy-deep)">この状態の表現はありません</b><br>上の絞り込みを変更すると、ほかの表現を表示できます。</div>' + rows
-        : '<div class="card" style="padding:28px 20px;text-align:center;margin-top:8px"><div style="font-size:30px">📚</div>'
-          + '<div style="font-weight:700;color:var(--navy-deep);margin-top:10px">保存した表現はまだありません</div>'
-          + '<p class="phrase-empty">セッションレポートの「使える表現」から保存するか、上の入力欄から追加できます。</p></div>');
+    let skipped = 0;
+    while (S.reviewIndex < S.reviewQueue.length && !currentReviewPhrase()){
+      S.reviewIndex += 1; skipped += 1;
+    }
+    if (skipped && !phraseNoticeIsError()) S.phraseNotice = "別の画面で削除された表現を飛ばしました。";
+    if (!currentReviewPhrase()) S.phraseView = "done";
   }
-
-  const backupCard = S.phraseView === "list" ? phraseBackupCardHtml() : "";
+  const content = S.phraseView === "review" ? phraseBookReviewHtml()
+    : (S.phraseView === "done" ? phraseBookDoneHtml() : phraseBookListHtml());
   app.innerHTML = '<div class="wrap safe-bottom" style="padding-top:24px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
-    +   '<button id="phraseBackBtn" class="book-link">← 戻る</button>'
-    +   '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
+    + '<button type="button" id="phraseBackBtn" data-pb-action="close" class="book-link">← 戻る</button>'
+    + '<div class="mono eyebrow red">PHRASE BOOK</div></div>'
     + '<h1 class="display" style="font-size:28px;color:var(--navy-deep);margin-top:18px">使える表現帳</h1>'
-    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">新しく保存した表現は未選択です。「まだ不安」または「覚えた」を選べます。同じ状態をもう一度押すと未選択に戻ります。</p>'
-    + '<p style="font-size:11px;color:#7B8390;line-height:1.65;margin-top:4px">この端末のブラウザ内に保存され、APIキーを削除しても表現は残ります。</p>'
-    + '<div class="phrase-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
-    + backupCard + content + '</div>';
-
-  $("phraseBackBtn").addEventListener("click", () => {
-    if (S.phraseView === "review") preparePhraseReviewExit();
-    closePhraseBook();
-  });
-  bindPhraseBackupControls();
-  const manualEn = $("manualEnglish"), manualJa = $("manualJapanese");
-  if (manualEn) manualEn.addEventListener("input", () => { S.manualEnglishDraft = manualEn.value; });
-  if (manualJa) manualJa.addEventListener("input", () => { S.manualJapaneseDraft = manualJa.value; });
-  const manualSave = $("manualPhraseSave");
-  if (manualSave) manualSave.addEventListener("click", () => {
-    const result = savePhraseToBook({ english:$("manualEnglish").value, japanese:$("manualJapanese").value }, {});
-    if (result === "invalid" || result === "failed"){
-      refreshPhraseBookBadges(); if (result === "invalid") $("manualEnglish").focus();
-    } else {
-      S.manualEnglishDraft = ""; S.manualJapaneseDraft = ""; renderPhraseBook();
-    }
-  });
-  if (manualJa) manualJa.addEventListener("keydown", e => { if (e.key === "Enter") manualSave.click(); });
-  document.querySelectorAll(".savedPhraseSpeak").forEach(b => b.addEventListener("click", () => {
-    const p = S.savedPhrases.find(x => x.id === b.getAttribute("data-id"));
-    if (p) speak(p.english);
-  }));
-  document.querySelectorAll(".savedPhraseDelete").forEach(b => b.addEventListener("click", () => {
-    const p = S.savedPhrases.find(x => x.id === b.getAttribute("data-id"));
-    if (p && window.confirm('「' + p.english + '」を表現帳から削除しますか？')){
-      removeSavedPhrase(p.id); renderPhraseBook();
-    }
-  }));
-  document.querySelectorAll(".phraseMastery").forEach(input => input.addEventListener("change", () => {
-    const status = input.getAttribute("data-status");
-    setPhraseMasteryStatus(input.getAttribute("data-id"), input.checked ? status : "unset");
-    syncPhraseMasteryControls(); refreshPhraseBookBadges();
-  }));
-  const practiceActive = $("practiceActiveBtn");
-  if (practiceActive) practiceActive.addEventListener("click", () => { S.practiceScope = "active"; syncPhraseMasteryControls(); });
-  const practiceUnsure = $("practiceUnsureBtn");
-  if (practiceUnsure) practiceUnsure.addEventListener("click", () => { S.practiceScope = "unsure"; syncPhraseMasteryControls(); });
-  const start = $("startReviewBtn"); if (start) start.addEventListener("click", () => startPhraseReview(S.practiceScope));
-  document.querySelectorAll(".phrase-filter").forEach(button => button.addEventListener("click", () => {
-    S.phraseListFilter = button.getAttribute("data-filter"); syncPhraseMasteryControls();
-  }));
-  const reveal = $("reviewRevealBtn"); if (reveal) reveal.addEventListener("click", () => { S.reviewReveal = true; renderPhraseBook(); });
-  const reviewSpeak = $("reviewSpeakBtn"); if (reviewSpeak) reviewSpeak.addEventListener("click", () => { const p = currentReviewPhrase(); if (p) speak(p.english); });
-  const reviewAgain = $("reviewAgainBtn"); if (reviewAgain) reviewAgain.addEventListener("click", () => recordPhraseReview(false));
-  const reviewGood = $("reviewGoodBtn"); if (reviewGood) reviewGood.addEventListener("click", () => recordPhraseReview(true));
-  const reviewClose = $("reviewCloseBtn"); if (reviewClose) reviewClose.addEventListener("click", finishPhraseReviewEarly);
-  const reviewDone = $("reviewDoneBtn"); if (reviewDone) reviewDone.addEventListener("click", () => { S.phraseView = "list"; renderPhraseBook(); });
+    + '<p style="font-size:12px;color:var(--sub);line-height:1.7;margin-top:6px">最初は「未選択」です。「まだ不安」「覚えた」はいつでも変更でき、選択中の状態をもう一度押すと未選択に戻ります。</p>'
+    + '<p style="font-size:11px;color:#7B8390;line-height:1.65;margin-top:4px">回答や状態変更はその場でこの端末に保存されます。APIキーを削除しても表現は残ります。</p>'
+    + '<div class="phrase-notice pb-notice' + (phraseNoticeIsError() ? ' error' : '') + '" id="phraseNotice" aria-live="polite">' + esc(S.phraseNotice) + '</div>'
+    + content + '</div>';
+  bindPhraseBookUI();
+  refreshPhraseBookBadges();
 }
 
 // ── summary ──
