@@ -905,6 +905,32 @@ async function onRecStopped(){
 }
 
 // ── upload & analyze ──
+let usePdfInputFallback = false;
+
+async function openPdfPicker(fallbackInput){
+  if (usePdfInputFallback || typeof window.showOpenFilePicker !== "function"){
+    fallbackInput.click(); return;
+  }
+  try{
+    const handles = await window.showOpenFilePicker({
+      id:"eigakkaiwa-pdf",
+      startIn:"downloads",
+      types:[{
+        description:"PDFファイル",
+        accept:{ "application/pdf":[".pdf"] },
+      }],
+      excludeAcceptAllOption:true,
+      multiple:false,
+    });
+    if (handles && handles[0]) await handleFile(await handles[0].getFile());
+  }catch(e){
+    if (e && e.name === "AbortError") return;
+    usePdfInputFallback = true;
+    S.error = "端末内のファイル画面を開けなかったため、標準の選択画面に切り替えました。もう一度PDF選択欄をタップしてください。";
+    render();
+  }
+}
+
 async function handleFile(file){
   if (!file) return;
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
@@ -1186,7 +1212,7 @@ function renderUpload(){
     + '<div id="dropZone" style="margin-top:30px;border:2px dashed var(--line);background:var(--paper);border-radius:16px;padding:32px;text-align:center;cursor:pointer">'
     +   '<div style="width:48px;height:48px;border-radius:12px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:20px">📄</div>'
     +   '<div style="margin-top:16px;font-weight:700;color:var(--navy-deep)">論文・ポスターのPDFを選択</div>'
-    +   '<div style="margin-top:4px;font-size:12px;color:var(--sub)">クリックして選択、またはドラッグ＆ドロップ（15MBまで）</div>'
+    +   '<div style="margin-top:4px;font-size:12px;color:var(--sub)">タップすると端末内のファイル選択画面を開きます。初回は「ダウンロード」を優先、次回は前回の場所（15MBまで）</div>'
     + '</div>'
     + '<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none">'
     + (S.error ? '<div class="errbox" style="margin-top:16px">' + esc(S.error) + '</div>' : '')
@@ -1196,7 +1222,7 @@ function renderUpload(){
     + '</div>';
 
   const dz = $("dropZone"), inp = $("pdfInput");
-  dz.addEventListener("click", () => inp.click());
+  dz.addEventListener("click", () => { openPdfPicker(inp); });
   dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.borderColor = "var(--navy)"; dz.style.background = "#EAEDF2"; });
   dz.addEventListener("dragleave", () => { dz.style.borderColor = "var(--line)"; dz.style.background = "var(--paper)"; });
   dz.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
