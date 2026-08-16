@@ -78,12 +78,26 @@ textarea,input{font-family:inherit}
 .backup-card{background:#F7FAFF;border:1px solid #C8D6EC;border-radius:16px;padding:16px;margin-top:14px}
 .backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .review-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.mastery-field{border:0;border-top:1px solid var(--line);margin-top:12px;padding-top:11px}
+.mastery-field legend{padding:0 7px 0 0;font-size:10px;font-weight:700;color:#7B8390}
+.mastery-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}
+.mastery-option{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--sub);font-size:12px;font-weight:700;cursor:pointer}
+.mastery-option input{width:18px;height:18px;margin:0;flex-shrink:0}
+.mastery-option.unsure input{accent-color:#A36918}.mastery-option.mastered input{accent-color:var(--green)}
+.mastery-option.unsure.on{border-color:var(--amber-line);background:var(--amber-bg);color:#7A4B0F}
+.mastery-option.mastered.on{border-color:#BCD9C6;background:var(--green-bg);color:var(--green)}
+.mastery-option:focus-within{outline:3px solid rgba(49,93,155,.2);outline-offset:1px}
+.practice-card{border:1px solid #C8D6EC;background:#F7FAFF;border-radius:16px;padding:15px;margin-top:8px}
+.mastery-counts{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--sub);margin-top:5px}
+.practice-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.practice-actions .btn{font-size:12px;padding:11px 8px}
 .safe-bottom{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media (max-width:420px){
   .phrase-row{flex-wrap:wrap}
   .phrase-actions{width:100%;justify-content:flex-end}
   .backup-actions{grid-template-columns:1fr}
 }
+@media (max-width:340px){.mastery-options,.practice-actions{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -134,7 +148,7 @@ const S = {
   summary:null, summaryLoading:false, summaryError:false, summaryErrorMsg:"",
   savedPhrases:[], phraseReturnStage:"upload", phraseView:"list", phraseNotice:"",
   manualEnglishDraft:"", manualJapaneseDraft:"",
-  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{},
+  reviewQueue:[], reviewIndex:0, reviewReveal:false, reviewRetried:{}, reviewMode:"active",
 };
 let recognition = null, listening = false, tickTimer = null, tick = 0;
 
@@ -150,7 +164,7 @@ function setStage(st){ S.stage = st; render(); }
 // ── API key (端末内に保存) ──
 const LS_KEY = "rtt_api_key", LS_MODEL = "rtt_model";
 const LS_PHRASES = "rtt_saved_phrases_v1", LS_PHRASES_LEGACY = "rtt_saved_phrases";
-const PHRASE_BACKUP_FORMAT = "eigakkaiwa.phrasebook.backup", PHRASE_BACKUP_VERSION = 1;
+const PHRASE_BACKUP_FORMAT = "eigakkaiwa.phrasebook.backup", PHRASE_BACKUP_VERSION = 2;
 const PHRASE_BACKUP_MAX_BYTES = 20 * 1024 * 1024;
 const PHRASE_BACKUP_MAX_ITEMS = 10000, PHRASE_BACKUP_MAX_TEXT = 4000;
 const PHRASE_BACKUP_MAX_REVIEWS = 1000000;
@@ -185,6 +199,10 @@ function safeReviewCount(value){
     ? Math.min(count, PHRASE_BACKUP_MAX_REVIEWS) : 0;
 }
 
+function safeMasteryStatus(value){
+  return value === "unsure" || value === "mastered" || value === "unset" ? value : "unset";
+}
+
 function coerceSavedPhrase(raw, index){
   if (typeof raw === "string") raw = { english:raw };
   if (!raw || typeof raw !== "object") return null;
@@ -193,6 +211,8 @@ function coerceSavedPhrase(raw, index){
   const createdAt = safeSavedDate(raw.createdAt || raw.addedAt, new Date().toISOString());
   const reviewCount = safeReviewCount(raw.reviewCount);
   const rawId = normalizePhraseText(raw.id);
+  const masteryStatus = safeMasteryStatus(raw.masteryStatus);
+  const hasValidMastery = raw.masteryStatus === "unset" || raw.masteryStatus === "unsure" || raw.masteryStatus === "mastered";
   return {
     id:(rawId && rawId.length <= 200) ? rawId : ("legacy_" + index + "_" + phraseFingerprint(english).slice(0, 24)),
     english: english,
@@ -203,12 +223,14 @@ function coerceSavedPhrase(raw, index){
     reviewCount:reviewCount,
     correctCount:Math.min(reviewCount, safeReviewCount(raw.correctCount)),
     lastReviewedAt:safeSavedDate(raw.lastReviewedAt, null),
+    masteryStatus:masteryStatus,
+    masteryUpdatedAt:hasValidMastery ? safeSavedDate(raw.masteryUpdatedAt, null) : null,
   };
 }
 
 function writeSavedPhrases(items){
   try{
-    localStorage.setItem(LS_PHRASES, JSON.stringify({ version:1, items:items }));
+    localStorage.setItem(LS_PHRASES, JSON.stringify({ version:2, items:items }));
     S.savedPhrases = items;
     return true;
   }catch(e){
@@ -237,7 +259,9 @@ function loadSavedPhrases(){
       if (ids.has(p.id)) p.id = makePhraseId();
       ids.add(p.id); return true;
     });
-    if (migrated) writeSavedPhrases(S.savedPhrases);
+    const needsMigration = migrated || Array.isArray(parsed) || Number(parsed && parsed.version) < 2
+      || source.some(item => !item || typeof item !== "object" || !("masteryStatus" in item));
+    if (needsMigration) writeSavedPhrases(S.savedPhrases);
     return true;
   }catch(e){
     S.savedPhrases = previous;
@@ -283,6 +307,7 @@ function savePhraseToBook(phrase, source){
     id:makePhraseId(), english:english, japanese:japanese, createdAt:new Date().toISOString(),
     sourceTitle:normalizePhraseText(source.sourceTitle), scenario:normalizePhraseText(source.scenario),
     reviewCount:0, correctCount:0, lastReviewedAt:null,
+    masteryStatus:"unset", masteryUpdatedAt:null,
   };
   if (!writeSavedPhrases([item].concat(S.savedPhrases))) return "failed";
   S.phraseNotice = "表現帳に保存しました。";
@@ -312,6 +337,7 @@ function saveSummaryPhrases(phrases){
       id:makePhraseId(), english:english, japanese:japanese, createdAt:new Date().toISOString(),
       sourceTitle:normalizePhraseText(source.sourceTitle), scenario:normalizePhraseText(source.scenario),
       reviewCount:0, correctCount:0, lastReviewedAt:null,
+      masteryStatus:"unset", masteryUpdatedAt:null,
     });
   });
   if (!additions.length && !translations){ S.phraseNotice = "すべて保存済みです。"; return 0; }
@@ -345,6 +371,8 @@ function buildPhraseBackup(){
       reviewCount:safeReviewCount(p.reviewCount),
       correctCount:Math.min(safeReviewCount(p.reviewCount), safeReviewCount(p.correctCount)),
       lastReviewedAt:safeSavedDate(p.lastReviewedAt, null),
+      masteryStatus:safeMasteryStatus(p.masteryStatus),
+      masteryUpdatedAt:safeSavedDate(p.masteryUpdatedAt, null),
     })),
   };
 }
@@ -422,13 +450,15 @@ function parsePhraseBackup(text){
   if (typeof text !== "string" || text.length > PHRASE_BACKUP_MAX_BYTES) throw new Error("too_large");
   let parsed;
   try{ parsed = JSON.parse(text); }catch(e){ throw new Error("invalid_backup"); }
-  let source = null;
+  let source = null, sourceVersion = 0;
   if (Array.isArray(parsed)) source = parsed;
   else if (parsed && parsed.format === PHRASE_BACKUP_FORMAT){
-    if (Number(parsed.schemaVersion) > PHRASE_BACKUP_VERSION) throw new Error("future_backup");
-    if (Number(parsed.schemaVersion) !== PHRASE_BACKUP_VERSION || !Array.isArray(parsed.items)) throw new Error("invalid_backup");
+    sourceVersion = Number(parsed.schemaVersion);
+    if (sourceVersion > PHRASE_BACKUP_VERSION) throw new Error("future_backup");
+    if ((sourceVersion !== 1 && sourceVersion !== 2) || !Array.isArray(parsed.items)) throw new Error("invalid_backup");
     source = parsed.items;
-  } else if (parsed && Number(parsed.version) === 1 && Array.isArray(parsed.items)){
+  } else if (parsed && (Number(parsed.version) === 1 || Number(parsed.version) === 2) && Array.isArray(parsed.items)){
+    sourceVersion = Number(parsed.version);
     source = parsed.items;
   }
   if (!source || source.length > PHRASE_BACKUP_MAX_ITEMS) throw new Error("invalid_backup");
@@ -440,9 +470,16 @@ function parsePhraseBackup(text){
       const rawEnglish = raw.english != null ? raw.english : raw.en;
       const rawJapanese = raw.japanese != null ? raw.japanese : raw.ja;
       if (typeof rawEnglish !== "string" || (rawJapanese != null && typeof rawJapanese !== "string")) throw new Error("invalid_backup");
+      if (sourceVersion >= 2){
+        if (raw.masteryStatus != null && safeMasteryStatus(raw.masteryStatus) !== raw.masteryStatus) throw new Error("invalid_backup");
+        if (raw.masteryUpdatedAt != null && safeSavedDate(raw.masteryUpdatedAt, null) == null) throw new Error("invalid_backup");
+      }
     }
-    const item = coerceSavedPhrase(raw, index);
+    const normalizedRaw = sourceVersion >= 2 || typeof raw === "string"
+      ? raw : Object.assign({}, raw, { masteryStatus:"unset", masteryUpdatedAt:null });
+    const item = coerceSavedPhrase(normalizedRaw, index);
     if (!item || item.english.length > PHRASE_BACKUP_MAX_TEXT || item.japanese.length > PHRASE_BACKUP_MAX_TEXT) throw new Error("invalid_backup");
+    if (sourceVersion < 2){ item.masteryStatus = "unset"; item.masteryUpdatedAt = null; }
     item.sourceTitle = ""; item.scenario = "";
     const key = phraseFingerprint(item.english);
     if (seen.has(key)) return;
@@ -465,6 +502,23 @@ function laterSavedDate(a, b){
   return a || b || null;
 }
 
+function mergeMasteryState(current, imported){
+  const currentStatus = safeMasteryStatus(current && current.masteryStatus);
+  const importedStatus = safeMasteryStatus(imported && imported.masteryStatus);
+  const currentAt = safeSavedDate(current && current.masteryUpdatedAt, null);
+  const importedAt = safeSavedDate(imported && imported.masteryUpdatedAt, null);
+  const currentMs = currentAt ? Date.parse(currentAt) : NaN;
+  const importedMs = importedAt ? Date.parse(importedAt) : NaN;
+  if (Number.isFinite(importedMs) && (!Number.isFinite(currentMs) || importedMs > currentMs)){
+    return { masteryStatus:importedStatus, masteryUpdatedAt:importedAt };
+  }
+  if (Number.isFinite(currentMs)) return { masteryStatus:currentStatus, masteryUpdatedAt:currentAt };
+  if (currentStatus === "unset" && importedStatus !== "unset"){
+    return { masteryStatus:importedStatus, masteryUpdatedAt:importedAt };
+  }
+  return { masteryStatus:currentStatus, masteryUpdatedAt:currentAt };
+}
+
 function mergePhraseBackupItems(imported){
   const next = S.savedPhrases.slice(), byKey = new Map(), usedIds = new Set();
   next.forEach((p, index) => { byKey.set(phraseFingerprint(p.english), index); usedIds.add(p.id); });
@@ -480,6 +534,7 @@ function mergePhraseBackupItems(imported){
     const index = byKey.get(key), current = next[index];
     const reviewCount = Math.max(Number(current.reviewCount) || 0, Number(item.reviewCount) || 0);
     const correctCount = Math.min(reviewCount, Math.max(Number(current.correctCount) || 0, Number(item.correctCount) || 0));
+    const mastery = mergeMasteryState(current, item);
     const merged = Object.assign({}, current, {
       japanese:current.japanese || item.japanese,
       createdAt:earlierSavedDate(current.createdAt, item.createdAt),
@@ -488,11 +543,14 @@ function mergePhraseBackupItems(imported){
       reviewCount:reviewCount,
       correctCount:correctCount,
       lastReviewedAt:laterSavedDate(current.lastReviewedAt, item.lastReviewedAt),
+      masteryStatus:mastery.masteryStatus,
+      masteryUpdatedAt:mastery.masteryUpdatedAt,
     });
     const changed = merged.japanese !== current.japanese || merged.createdAt !== current.createdAt
       || merged.sourceTitle !== current.sourceTitle || merged.scenario !== current.scenario
       || merged.reviewCount !== current.reviewCount || merged.correctCount !== current.correctCount
-      || merged.lastReviewedAt !== current.lastReviewedAt;
+      || merged.lastReviewedAt !== current.lastReviewedAt || merged.masteryStatus !== current.masteryStatus
+      || merged.masteryUpdatedAt !== current.masteryUpdatedAt;
     if (changed){ next[index] = merged; updated += 1; } else unchanged += 1;
   });
   return { items:additions.concat(next), added:additions.length, updated:updated, unchanged:unchanged };
@@ -512,7 +570,7 @@ async function importPhraseBackupFile(file){
     else {
       const parts = [];
       if (merged.added) parts.push(merged.added + "件を追加");
-      if (merged.updated) parts.push(merged.updated + "件の復習履歴を更新");
+      if (merged.updated) parts.push(merged.updated + "件の学習状態・復習履歴を更新");
       S.phraseNotice = "バックアップから" + parts.join("、") + "しました。";
     }
     if (S.stage === "phrasebook") renderPhraseBook(); else refreshPhraseBookBadges();
@@ -1442,9 +1500,44 @@ function formatSavedDate(value){
   catch(e){ return d.toISOString().slice(0, 10); }
 }
 
-function startPhraseReview(){
-  if (!S.savedPhrases.length) return;
-  S.reviewQueue = S.savedPhrases.slice().sort((a, b) => {
+function phraseMasteryCounts(){
+  const counts = { unset:0, unsure:0, mastered:0 };
+  S.savedPhrases.forEach(p => { counts[safeMasteryStatus(p.masteryStatus)] += 1; });
+  return counts;
+}
+
+function setPhraseMasteryStatus(id, status){
+  if (status !== "unset" && status !== "unsure" && status !== "mastered") return false;
+  const index = S.savedPhrases.findIndex(p => p.id === id);
+  if (index === -1) return false;
+  const next = S.savedPhrases.slice();
+  next[index] = Object.assign({}, next[index], {
+    masteryStatus:status,
+    masteryUpdatedAt:new Date().toISOString(),
+  });
+  if (!writeSavedPhrases(next)) return false;
+  S.phraseNotice = status === "mastered" ? "「覚えた」に設定しました。通常の練習から外れます。"
+    : (status === "unsure" ? "「まだ不安」に設定しました。" : "学習状態を未設定に戻しました。");
+  return true;
+}
+
+function startPhraseReview(mode){
+  mode = mode === "unsure" ? "unsure" : "active";
+  const candidates = S.savedPhrases.filter(p => mode === "unsure"
+    ? safeMasteryStatus(p.masteryStatus) === "unsure"
+    : safeMasteryStatus(p.masteryStatus) !== "mastered");
+  if (!candidates.length){
+    S.phraseNotice = mode === "unsure"
+      ? "「まだ不安」にチェックした表現がありません。"
+      : "練習対象がありません。「覚えた」のチェックを外すと練習できます。";
+    refreshPhraseBookBadges(); return;
+  }
+  S.reviewQueue = candidates.slice().sort((a, b) => {
+    if (mode === "active"){
+      const aUnsure = safeMasteryStatus(a.masteryStatus) === "unsure" ? 0 : 1;
+      const bUnsure = safeMasteryStatus(b.masteryStatus) === "unsure" ? 0 : 1;
+      if (aUnsure !== bUnsure) return aUnsure - bUnsure;
+    }
     if (!a.lastReviewedAt && b.lastReviewedAt) return -1;
     if (a.lastReviewedAt && !b.lastReviewedAt) return 1;
     const aRate = a.reviewCount ? a.correctCount / a.reviewCount : 0;
@@ -1452,7 +1545,8 @@ function startPhraseReview(){
     if (aRate !== bRate) return aRate - bRate;
     return String(a.lastReviewedAt || a.createdAt).localeCompare(String(b.lastReviewedAt || b.createdAt));
   }).map(p => p.id);
-  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.phraseView = "review"; S.phraseNotice = "";
+  S.reviewIndex = 0; S.reviewReveal = false; S.reviewRetried = {}; S.reviewMode = mode;
+  S.phraseView = "review"; S.phraseNotice = "";
   renderPhraseBook();
 }
 
@@ -1469,6 +1563,8 @@ function recordPhraseReview(remembered){
     reviewCount:(Number(p.reviewCount) || 0) + 1,
     correctCount:(Number(p.correctCount) || 0) + (remembered ? 1 : 0),
     lastReviewedAt:now,
+    masteryStatus:remembered ? "mastered" : "unsure",
+    masteryUpdatedAt:now,
   }) : p);
   if (!writeSavedPhrases(next)){ refreshPhraseBookBadges(); return; }
   if (!remembered && !S.reviewRetried[current.id]){
@@ -1488,7 +1584,7 @@ function phraseBackupCardHtml(){
     + '<button id="phraseBackupSaveBtn" class="btn btn-navy">共有先アプリを選ぶ</button>'
     + '<button id="phraseBackupLoadBtn" class="btn btn-ghost">バックアップを読み込む</button></div>'
     + '<input id="phraseBackupFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>'
-    + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
+    + '<p style="font-size:10px;line-height:1.6;color:#7B8390;margin-top:9px">読み込みは現在の表現を消さずに追加・更新します。保存対象は英語表現・日本語訳・学習状態・復習履歴のみで、Gemini APIキー、PDF、会話内容は含まれません。</p>'
     + '</section>';
 }
 
@@ -1504,6 +1600,25 @@ function bindPhraseBackupControls(){
   });
 }
 
+function syncPhraseMasteryControls(){
+  const counts = phraseMasteryCounts(), activeCount = counts.unset + counts.unsure;
+  const unsetCount = $("masteryUnsetCount"), unsureCount = $("masteryUnsureCount"), masteredCount = $("masteryMasteredCount");
+  if (unsetCount) unsetCount.textContent = counts.unset;
+  if (unsureCount) unsureCount.textContent = counts.unsure;
+  if (masteredCount) masteredCount.textContent = counts.mastered;
+  document.querySelectorAll(".phraseMastery").forEach(input => {
+    const phrase = S.savedPhrases.find(p => p.id === input.getAttribute("data-id"));
+    const checked = !!phrase && safeMasteryStatus(phrase.masteryStatus) === input.getAttribute("data-status");
+    input.checked = checked;
+    const label = input.closest && input.closest(".mastery-option");
+    if (label) label.classList.toggle("on", checked);
+  });
+  const active = $("startReviewBtn");
+  if (active){ active.disabled = activeCount === 0; active.textContent = "「覚えた」以外を練習（" + activeCount + "件）"; }
+  const unsure = $("startUnsureReviewBtn");
+  if (unsure){ unsure.disabled = counts.unsure === 0; unsure.textContent = "「まだ不安」だけ練習（" + counts.unsure + "件）"; }
+}
+
 function renderPhraseBook(){
   let content = "";
   if (S.phraseView === "review"){
@@ -1512,7 +1627,7 @@ function renderPhraseBook(){
     content = '<div style="margin-top:22px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-bottom:10px">'
       +   '<span>' + (S.reviewIndex + 1) + ' / ' + S.reviewQueue.length + '</span>'
-      +   '<button id="reviewCloseBtn" style="color:var(--navy);font-weight:700;padding:6px">一覧へ戻る</button></div>'
+      +   '<button id="reviewCloseBtn" class="small-action">一覧へ戻る</button></div>'
       + '<div class="review-card">'
       +   '<div class="mono eyebrow">JAPANESE ─ 英語で思い出す</div>'
       +   '<div style="font-size:18px;font-weight:700;line-height:1.7;margin-top:18px">'
@@ -1524,8 +1639,8 @@ function renderPhraseBook(){
         : '<button id="reviewRevealBtn" class="btn btn-navy" style="margin-top:26px">英語を表示する</button>')
       + '</div>'
       + (S.reviewReveal ? '<div style="display:flex;gap:10px;margin-top:14px">'
-        + '<button id="reviewAgainBtn" class="btn btn-ghost">まだ不安</button>'
-        + '<button id="reviewGoodBtn" class="btn btn-stripe">覚えた</button></div>' : '')
+        + '<button id="reviewAgainBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>まだ不安</button>'
+        + '<button id="reviewGoodBtn" class="btn btn-ghost"><span aria-hidden="true">☐</span>覚えた</button></div>' : '')
       + '</div>';
   } else if (S.phraseView === "done"){
     content = '<div class="card" style="padding:28px 20px;text-align:center;margin-top:24px">'
@@ -1534,13 +1649,23 @@ function renderPhraseBook(){
       + '<p style="font-size:13px;color:var(--sub);margin-top:8px">' + S.reviewQueue.length + '回、表現を復習しました。</p>'
       + '<button id="reviewDoneBtn" class="btn btn-navy" style="margin-top:22px">表現一覧へ戻る</button></div>';
   } else {
+    const masteryCounts = phraseMasteryCounts();
+    const activeCount = masteryCounts.unset + masteryCounts.unsure;
     let rows = "";
-    S.savedPhrases.forEach(p => {
+    S.savedPhrases.forEach((p, phraseIndex) => {
       const meta = [p.sourceTitle, formatSavedDate(p.createdAt)].filter(Boolean).join(" · ");
+      const masteryStatus = safeMasteryStatus(p.masteryStatus);
+      const unsureId = "phraseUnsure_" + phraseIndex, masteredId = "phraseMastered_" + phraseIndex;
       rows += '<div class="card" style="padding:14px 16px;margin-top:10px">'
         + '<div lang="en" style="font-size:15px;font-weight:700;line-height:1.55;color:var(--navy-deep)">' + esc(p.english) + '</div>'
         + (p.japanese ? '<div style="font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px">' + esc(p.japanese) + '</div>' : '')
         + (meta ? '<div style="font-size:10px;color:#8A909B;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(meta) + '</div>' : '')
+        + '<fieldset class="mastery-field"><legend>学習状態（1つまで選択・もう一度押すと解除）</legend><div class="mastery-options">'
+        + '<label class="mastery-option unsure' + (masteryStatus === "unsure" ? ' on' : '') + '" for="' + unsureId + '">'
+        +   '<input id="' + unsureId + '" class="phraseMastery" type="checkbox" data-id="' + esc(p.id) + '" data-status="unsure"' + (masteryStatus === "unsure" ? ' checked' : '') + '>まだ不安</label>'
+        + '<label class="mastery-option mastered' + (masteryStatus === "mastered" ? ' on' : '') + '" for="' + masteredId + '">'
+        +   '<input id="' + masteredId + '" class="phraseMastery" type="checkbox" data-id="' + esc(p.id) + '" data-status="mastered"' + (masteryStatus === "mastered" ? ' checked' : '') + '>覚えた</label>'
+        + '</div></fieldset>'
         + '<div style="display:flex;justify-content:flex-end;gap:7px;margin-top:10px">'
         +   '<button class="savedPhraseSpeak small-action" data-id="' + esc(p.id) + '">🔊 読む</button>'
         +   '<button class="savedPhraseDelete small-action" data-id="' + esc(p.id) + '" style="color:var(--red-ink)">削除</button></div></div>';
@@ -1551,7 +1676,16 @@ function renderPhraseBook(){
       + '<input id="manualJapanese" type="text" maxlength="800" value="' + esc(S.manualJapaneseDraft) + '" placeholder="日本語訳（任意）" style="margin-top:8px;width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;background:var(--bg);outline:none">'
       + '<button id="manualPhraseSave" class="btn btn-navy" style="margin-top:10px">表現帳に追加する</button></div>'
       + (S.savedPhrases.length
-        ? '<button id="startReviewBtn" class="btn btn-stripe" style="margin-top:8px">復習をはじめる（' + S.savedPhrases.length + '件）</button>' + rows
+        ? '<section class="practice-card" aria-labelledby="practiceHeading">'
+          + '<div id="practiceHeading" class="mono" style="font-size:10px;color:#315D9B">PRACTICE ─ 練習する表現を選ぶ</div>'
+          + '<div class="mastery-counts"><span>未設定 <b id="masteryUnsetCount">' + masteryCounts.unset + '</b></span>'
+          + '<span>まだ不安 <b id="masteryUnsureCount">' + masteryCounts.unsure + '</b></span>'
+          + '<span>覚えた <b id="masteryMasteredCount">' + masteryCounts.mastered + '</b></span></div>'
+          + '<p style="font-size:11px;line-height:1.6;color:var(--sub);margin-top:7px">新しい表現はどちらにもチェックされません。「覚えた」は通常の練習から外れます。</p>'
+          + '<div class="practice-actions">'
+          + '<button id="startReviewBtn" class="btn btn-navy"' + (activeCount ? '' : ' disabled') + '>「覚えた」以外を練習（' + activeCount + '件）</button>'
+          + '<button id="startUnsureReviewBtn" class="btn btn-ghost"' + (masteryCounts.unsure ? '' : ' disabled') + '>「まだ不安」だけ練習（' + masteryCounts.unsure + '件）</button>'
+          + '</div></section>' + rows
         : '<div class="card" style="padding:28px 20px;text-align:center;margin-top:8px"><div style="font-size:30px">📚</div>'
           + '<div style="font-weight:700;color:var(--navy-deep);margin-top:10px">保存した表現はまだありません</div>'
           + '<p class="phrase-empty">セッションレポートの「使える表現」から保存するか、上の入力欄から追加できます。</p></div>');
@@ -1592,7 +1726,13 @@ function renderPhraseBook(){
       removeSavedPhrase(p.id); renderPhraseBook();
     }
   }));
-  const start = $("startReviewBtn"); if (start) start.addEventListener("click", startPhraseReview);
+  document.querySelectorAll(".phraseMastery").forEach(input => input.addEventListener("change", () => {
+    const status = input.getAttribute("data-status");
+    setPhraseMasteryStatus(input.getAttribute("data-id"), input.checked ? status : "unset");
+    syncPhraseMasteryControls(); refreshPhraseBookBadges();
+  }));
+  const start = $("startReviewBtn"); if (start) start.addEventListener("click", () => startPhraseReview("active"));
+  const startUnsure = $("startUnsureReviewBtn"); if (startUnsure) startUnsure.addEventListener("click", () => startPhraseReview("unsure"));
   const reveal = $("reviewRevealBtn"); if (reveal) reveal.addEventListener("click", () => { S.reviewReveal = true; renderPhraseBook(); });
   const reviewSpeak = $("reviewSpeakBtn"); if (reviewSpeak) reviewSpeak.addEventListener("click", () => { const p = currentReviewPhrase(); if (p) speak(p.english); });
   const reviewAgain = $("reviewAgainBtn"); if (reviewAgain) reviewAgain.addEventListener("click", () => recordPhraseReview(false));
